@@ -80,14 +80,14 @@ fun AboutScreen(vm: com.jnetai.assistant.ui.screens.AppViewModel, onBack: () -> 
                     checking = false
                     checkResult = result; checkTone = tone
                 }
-            })
+            }, modifier = Modifier.weight(1f))
             ActionBtn("Share app", onclick = {
                 val share = Intent(Intent.ACTION_SEND).apply {
                     type = "text/plain"
                     putExtra(Intent.EXTRA_TEXT, "J~Net AI Assistant — private AI workstation for Android. Download: $GITHUB_REPO")
                 }
                 context.startActivity(Intent.createChooser(share, "Share J~Net AI Assistant"))
-            }, icon = Icons.Default.Share)
+            }, modifier = Modifier.weight(1f), icon = Icons.Default.Share)
         }
 
         if (checking) {
@@ -135,10 +135,9 @@ fun AboutScreen(vm: com.jnetai.assistant.ui.screens.AppViewModel, onBack: () -> 
 }
 
 @Composable
-private fun ActionBtn(label: String, onclick: () -> Unit, icon: androidx.compose.ui.graphics.vector.ImageVector? = null) {
+private fun ActionBtn(label: String, onclick: () -> Unit, icon: androidx.compose.ui.graphics.vector.ImageVector? = null, modifier: Modifier = Modifier) {
     Row(
-        Modifier
-            .weight(1f)
+        modifier
             .clip(RoundedCornerShape(10.dp))
             .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f))
             .clickable(onClick = onclick)

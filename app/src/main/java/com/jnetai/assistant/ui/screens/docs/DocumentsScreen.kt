@@ -167,6 +167,7 @@ private fun DocumentCard(doc: com.jnetai.assistant.data.model.IndexedDocument, o
     }
 }
 
+@Composable
 private fun statusColor(s: IndexStatus) = when (s) {
     IndexStatus.READY -> NeonCyan
     IndexStatus.FAILED -> MaterialTheme.colorScheme.error

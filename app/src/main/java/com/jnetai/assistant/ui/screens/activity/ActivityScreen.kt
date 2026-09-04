@@ -50,8 +50,8 @@ fun ActivityScreen(vm: AppViewModel) {
 
         Spacer(Modifier.height(10.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            StatCard("Today", "${stats.todayTokens}", "tokens (${stats.todayRequests} req)")
-            StatCard("Total", "${stats.totalTokens}", "lifetime tokens")
+            StatCard(Modifier.weight(1f), "Today", "${stats.todayTokens}", "tokens (${stats.todayRequests} req)")
+            StatCard(Modifier.weight(1f), "Total", "${stats.totalTokens}", "lifetime tokens")
         }
 
         Spacer(Modifier.height(12.dp))
@@ -96,8 +96,8 @@ fun ActivityScreen(vm: AppViewModel) {
 }
 
 @Composable
-private fun StatCard(label: String, value: String, sub: String) {
-    GlowCard(Modifier.weight(1f)) {
+private fun StatCard(modifier: Modifier, label: String, value: String, sub: String) {
+    GlowCard(modifier) {
         Text(label, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text(value, fontSize = 22.sp, fontWeight = FontWeight.Bold, color = NeonCyan)
         Text(sub, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)

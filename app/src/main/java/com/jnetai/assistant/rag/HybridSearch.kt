@@ -65,7 +65,7 @@ class HybridSearch(private val db: AppDatabase) {
         documentIds: List<Long>? = null,
         hybrid: Boolean = true
     ): List<SearchResult> = withContext(Dispatchers.Default) {
-        val allChunks = db.chunkDao().getAll().first()
+        val allChunks = db.chunkDao().getAll()
         val docs = db.documentDao().getAll().first()
         val docById = runCatching { docs.groupBy { it.id } }.getOrDefault(emptyMap())
 
