@@ -8,6 +8,7 @@ import androidx.room.Query
 import androidx.room.Update
 import com.jnetai.assistant.data.model.ActivityRecord
 import com.jnetai.assistant.data.model.AgentAction
+import com.jnetai.assistant.data.model.AppSetting
 import com.jnetai.assistant.data.model.Chunk
 import com.jnetai.assistant.data.model.ConnectionProfile
 import com.jnetai.assistant.data.model.Conversation
