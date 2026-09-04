@@ -66,7 +66,12 @@ fun VoiceScreen(vm: AppViewModel) {
             state.displayName(),
             fontSize = 13.sp,
             fontWeight = FontWeight.SemiBold,
-            color = stateColor(state)
+            color = when (state) {
+                VoiceState.IDLE -> MaterialTheme.colorScheme.onSurfaceVariant
+                VoiceState.LISTENING, VoiceState.SPEAKING, VoiceState.TRANSCRIBING, VoiceState.THINKING -> NeonCyan
+                VoiceState.INTERRUPTED -> NeonPurple
+                VoiceState.ERROR -> NeonPink
+            }
         )
         Spacer(Modifier.height(16.dp))
 
@@ -140,14 +145,6 @@ private fun VoiceState.displayName() = when (this) {
     VoiceState.SPEAKING -> "SPEAKING"
     VoiceState.INTERRUPTED -> "INTERRUPTED"
     VoiceState.ERROR -> "ERROR"
-}
-
-@Composable
-private fun VoiceState.stateColor() = when (this) {
-    VoiceState.IDLE -> MaterialTheme.colorScheme.onSurfaceVariant
-    VoiceState.LISTENING, VoiceState.SPEAKING, VoiceState.TRANSCRIBING, VoiceState.THINKING -> NeonCyan
-    VoiceState.INTERRUPTED -> NeonPurple
-    VoiceState.ERROR -> NeonPink
 }
 
 private fun colorForState(s: VoiceState): Color = when (s) {
