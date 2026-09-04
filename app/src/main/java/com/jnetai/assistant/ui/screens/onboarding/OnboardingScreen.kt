@@ -89,6 +89,8 @@ fun OnboardingScreen(vm: AppViewModel, onFinished: () -> Unit) {
                             onValueChange = { pin = it },
                             label = { Text("Choose a PIN (4+ digits)") },
                             singleLine = true,
+                            visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Password),
                             modifier = Modifier.fillMaxWidth()
                         )
                     }

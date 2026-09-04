@@ -9,9 +9,12 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -26,14 +29,22 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.jnetai.assistant.data.security.AppLockManager
 import com.jnetai.assistant.ui.theme.NeonCyan
 import com.jnetai.assistant.ui.theme.NeonPurple
 import com.jnetai.assistant.ui.theme.NeonPink
 
-/** Full-screen gate shown before the app opens when Protect App is enabled. */
+/**
+ * Full-screen gate shown before the app opens when Protect App is enabled.
+ * PIN fields are always masked as ••••••. If unlocked with the default/reset
+ * PIN (12345678) the user is forced to set a personal PIN before continuing.
+ */
 @Composable
 fun AppLockScreen(vm: AppViewModel) {
+    var phase by remember { mutableStateOf(if (vm.lock.mustChangePin()) "change" else "enter") }
     var pin by remember { mutableStateOf("") }
+    var newPin by remember { mutableStateOf("") }
+    var confirmPin by remember { mutableStateOf("") }
     var error by remember { mutableStateOf("") }
     val context = androidx.compose.ui.platform.LocalContext.current
 
@@ -41,17 +52,77 @@ fun AppLockScreen(vm: AppViewModel) {
         Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
+            .verticalScroll(rememberScrollState())
             .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
         Text("J~Net AI Assistant", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = NeonCyan)
-        Spacer(Modifier.height(30.dp))
+        Spacer(Modifier.height(12.dp))
+
+        if (phase == "change") {
+            Text(
+                "Set a new personal PIN to continue",
+                fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(20.dp))
+            OutlinedTextField(
+                value = newPin,
+                onValueChange = { newPin = it; error = "" },
+                label = { Text("New PIN") },
+                singleLine = true,
+                visualTransformation = PasswordVisualTransformation(),
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Password),
+                modifier = Modifier.width(240.dp)
+            )
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(
+                value = confirmPin,
+                onValueChange = { confirmPin = it; error = "" },
+                label = { Text("Confirm PIN") },
+                singleLine = true,
+                visualTransformation = PasswordVisualTransformation(),
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Password),
+                modifier = Modifier.width(240.dp)
+            )
+            if (error.isNotEmpty()) {
+                Text(error, color = NeonPink, fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp))
+            }
+            Spacer(Modifier.height(16.dp))
+            Text(
+                "Save",
+                Modifier
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(NeonPurple)
+                    .clickable {
+                        when {
+                            newPin.length < 4 -> error = "PIN must be at least 4 characters"
+                            newPin != confirmPin -> error = "PINs do not match"
+                            !vm.changePinFromDefault(newPin) -> error = "Could not save PIN — please try again"
+                        }
+                    }
+                    .padding(horizontal = 60.dp, vertical = 12.dp),
+                color = androidx.compose.ui.graphics.Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold
+            )
+            return@Column
+        }
+
+        Text(
+            if (vm.lock.defaultPinInUse())
+                "Using the default PIN: ${AppLockManager.DEFAULT_PIN} — you will be asked to change it."
+            else
+                "Enter your PIN to continue",
+            fontSize = 14.sp,
+            color = if (vm.lock.defaultPinInUse()) NeonCyan else MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(Modifier.height(20.dp))
         OutlinedTextField(
             value = pin,
             onValueChange = { pin = it; error = "" },
             label = { Text("Enter PIN") },
             singleLine = true,
+            visualTransformation = PasswordVisualTransformation(),
+            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Password),
             modifier = Modifier.width(240.dp)
         )
         if (error.isNotEmpty()) {
@@ -64,12 +135,24 @@ fun AppLockScreen(vm: AppViewModel) {
                 .clip(RoundedCornerShape(10.dp))
                 .background(NeonPurple)
                 .clickable {
-                    vm.unlockWithPin(pin) { ok ->
-                        if (!ok) error = "Incorrect PIN"
+                    val decision = vm.unlockWithPin(pin)
+                    if (!decision.ok) {
+                        error = "Incorrect PIN"
+                    } else if (decision.mustChangePin) {
+                        phase = "change"
+                        pin = ""
                     }
                 }
                 .padding(horizontal = 60.dp, vertical = 12.dp),
             color = androidx.compose.ui.graphics.Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold
+        )
+        Spacer(Modifier.height(14.dp))
+        Text(
+            "Forgot your PIN? Use the default PIN ${AppLockManager.DEFAULT_PIN} — " +
+                "you'll be asked to set a new personal PIN afterwards.",
+            fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.width(280.dp),
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center
         )
         if (vm.lock.canUseBiometric()) {
             Spacer(Modifier.height(20.dp))

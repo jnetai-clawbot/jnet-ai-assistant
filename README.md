@@ -14,6 +14,16 @@ A complete private AI workstation for Android. Chat with cloud AI, run local mod
 - **Usage tracking** — daily/monthly token accounting per profile, activity log.
 - **100% local by default** — no analytics, no tracking, no forced cloud.
 
+## Default PIN
+
+If app protection is enabled, the app locks with a PIN.
+
+- **Default PIN: `12345678`**
+- PIN fields are shown masked (•••••).
+- While the default PIN is in use the lock screen shows it clearly.
+- The **first time you unlock with the default PIN you are forced to set a personal PIN** before the app opens.
+- PINs are stored only as salted PBKDF2 hashes — never in the clear.
+
 ## Tech Stack
 
 - Kotlin, Jetpack Compose, Material 3, MVVM

@@ -25,6 +25,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.jnetai.assistant.ui.components.GlowCard
@@ -77,8 +78,8 @@ fun SecurityScreen(vm: AppViewModel, onBack: () -> Unit) {
         Spacer(Modifier.height(10.dp))
         GlowCard(Modifier.fillMaxWidth(), glow = NeonCyan) {
             SectionHeader("Application PIN / password")
-            Txt("New PIN", pin) { pin = it }
-            Txt("Confirm PIN", confirm) { confirm = it }
+            Txt("New PIN", pin, password = true, onChange = { pin = it })
+            Txt("Confirm PIN", confirm, password = true, onChange = { confirm = it })
             Spacer(Modifier.height(8.dp))
             Row {
                 Text(
@@ -95,6 +96,19 @@ fun SecurityScreen(vm: AppViewModel, onBack: () -> Unit) {
                         }
                         .padding(horizontal = 14.dp, vertical = 8.dp),
                     color = NeonCyan, fontSize = 13.sp
+                )
+            }
+            Spacer(Modifier.height(6.dp))
+            if (lock.defaultPinInUse()) {
+                Text(
+                    "Default PIN in use: ${com.jnetai.assistant.data.security.AppLockManager.DEFAULT_PIN}. " +
+                        "Set a new personal PIN above to replace it.",
+                    fontSize = 12.sp, color = NeonCyan
+                )
+            } else {
+                Text(
+                    "If you forget your PIN you can always reset with the documented default PIN.",
+                    fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
@@ -134,13 +148,17 @@ fun SecurityScreen(vm: AppViewModel, onBack: () -> Unit) {
 }
 
 @Composable
-private fun Txt(label: String, value: String, onChange: (String) -> Unit) {
+private fun Txt(label: String, value: String, password: Boolean = false, onChange: (String) -> Unit) {
     Column(Modifier.padding(top = 6.dp)) {
         Text(label, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         TextField(
             value = value,
             onValueChange = onChange,
             singleLine = true,
+            visualTransformation = if (password) androidx.compose.ui.text.input.PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,
+            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                keyboardType = if (password) KeyboardType.Password else KeyboardType.Text
+            ),
             shape = RoundedCornerShape(8.dp),
             textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface),
             colors = TextFieldDefaults.colors(

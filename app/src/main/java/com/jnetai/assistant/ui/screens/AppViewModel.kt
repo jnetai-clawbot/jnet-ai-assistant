@@ -34,6 +34,9 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+/** Result of a lock-screen PIN attempt. */
+data class LockDecision(val ok: Boolean, val mustChangePin: Boolean)
+
 /**
  * Root application ViewModel. Holds profile list, chat session state, RAG,
  * agent, usage and settings state. Kept intentionally single for practical
@@ -523,12 +526,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun unlockWithPin(pin: String, onResult: (Boolean) -> Unit) {
-        if (lock.verifyPin(pin)) {
-            lock.markUnlocked()
-            appLocked.value = false
-            onResult(true)
-        } else onResult(false)
+    fun unlockWithPin(pin: String): LockDecision {
+        if (!lock.verifyPin(pin)) return LockDecision(false, false)
+        lock.markUnlocked()
+        val mustChange = lock.mustChangePin()
+        if (!mustChange) appLocked.value = false
+        return LockDecision(true, mustChange)
     }
 
     fun unlockByBiometric() {
@@ -539,6 +542,18 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun markUnlocked() {
         lock.markUnlocked()
         appLocked.value = false
+    }
+
+    fun changePinFromDefault(newPin: String): Boolean {
+        if (newPin.length < 4) return false
+        return try {
+            lock.setPin(newPin)
+            markUnlocked()
+            true
+        } catch (t: Throwable) {
+            Err.e(Err.LOCK_PIN_ERROR, "Failed to set new PIN", t)
+            false
+        }
     }
 
     fun exportConversation(id: Long): String {

@@ -1,5 +1,15 @@
 # J~Net AI Assistant — Changes
 
+## 2026-09-04 — v1.0.1 (update)
+
+### Changed
+- **Default PIN** added: `12345678`.
+  - If app protection is enabled the lock screen shows the default PIN clearly while it is in use.
+  - Unlocking with the default PIN forces the user to set a new personal PIN before the app opens.
+  - PIN fields now use masked `••••••` input (password type) everywhere: lock screen, forced-change screen, Settings → Security, onboarding.
+  - Settings → Security shows "Default PIN in use: 12345678" when applicable, and a note that the default PIN can reset a forgotten PIN.
+- Version bumped to 1.0.1 (versionCode 2). v1.0.0 APK backed up to Backup/.
+
 ## 2026-09-04 — v1.0.0 (initial release)
 
 ### Added
@@ -24,5 +34,4 @@
 - Release APK signed with a stable app-specific keystore. Backed up under Backup/ and password recorded in the password vault.
 - Local on-device GGUF inference engine is not bundled (APK-size/memory); the interface exists and degrades gracefully with clear guidance.
 - Release uses unminified (no R8) build because Apache POI/xmlbeans carry opt-in classpath references that break R8; correctness and easy crash diagnosis prioritised.
-- v1.0.0 release built successfully via GitHub Actions (tag push). APK path: apk/J-Net-AI-Assistant-v1.0.0.apk
 - Release URL (no tag/file to avoid direct download): https://github.com/jnetai-clawbot/jnet-ai-assistant/releases

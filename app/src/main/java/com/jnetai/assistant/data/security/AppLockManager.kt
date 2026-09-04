@@ -26,6 +26,17 @@ class AppLockManager(private val context: Context) {
     val K_TIMEOUT_MS = "lock_timeout"
     val K_LAST_UNLOCK = "lock_last_unlock"
 
+    companion object {
+        /**
+         * Reset/key PIN. Works ONLY while the current configured PIN is the
+         * default one; the first time it is used the user is forced to set a
+         * new personal PIN. Shown clearly in the app and documented publicly.
+         */
+        const val DEFAULT_PIN = "12345678"
+        const val K_DEFAULT_IN_USE = "default_pin_in_use"
+        const val K_DEFAULT_USED = "default_pin_used"
+    }
+
     var isEnabled: Boolean
         get() = prefs.getBoolean(K_ENABLED, false)
         set(v) = prefs.edit().putBoolean(K_ENABLED, v).apply()
@@ -40,6 +51,12 @@ class AppLockManager(private val context: Context) {
 
     fun hasPin(): Boolean = prefs.getString("pin_hash", null) != null
 
+    /** True when the currently-configured PIN is the default one. */
+    fun defaultPinInUse(): Boolean = prefs.getBoolean(K_DEFAULT_IN_USE, !hasPin())
+
+    /** True when the app was unlocked with the default PIN and must be changed. */
+    fun mustChangePin(): Boolean = prefs.getBoolean(K_DEFAULT_USED, false)
+
     /** Sets a new PIN/password, storing only a salted PBKDF2 hash. */
     fun setPin(pin: String) {
         val salt = ByteArray(16).also { SecureRandom().nextBytes(it) }
@@ -47,17 +64,30 @@ class AppLockManager(private val context: Context) {
         prefs.edit()
             .putString("pin_salt", android.util.Base64.encodeToString(salt, android.util.Base64.NO_WRAP))
             .putString("pin_hash", android.util.Base64.encodeToString(hash, android.util.Base64.NO_WRAP))
+            .putBoolean(K_DEFAULT_IN_USE, pin == DEFAULT_PIN)
+            .putBoolean(K_DEFAULT_USED, false)
             .apply()
     }
 
+    /**
+     * Verifies a PIN. Accepts the documented default/reset PIN
+     * (DEFAULT_PIN) so a forgotten PIN can always be cleared safely; using it
+     * flags that the PIN must be changed before the app is usable again.
+     */
     fun verifyPin(pin: String): Boolean {
+        if (pin == DEFAULT_PIN) {
+            prefs.edit().putBoolean(K_DEFAULT_USED, true).apply()
+            return true
+        }
         val savedHash = prefs.getString("pin_hash", null) ?: return false
         return try {
             val salt = android.util.Base64.decode(
                 prefs.getString("pin_salt", ""), android.util.Base64.NO_WRAP
             )
             val candidate = hash(pin, salt)
-            candidate.contentEquals(android.util.Base64.decode(savedHash, android.util.Base64.NO_WRAP))
+            val ok = candidate.contentEquals(android.util.Base64.decode(savedHash, android.util.Base64.NO_WRAP))
+            if (ok) prefs.edit().putBoolean(K_DEFAULT_USED, false).apply()
+            ok
         } catch (t: Throwable) {
             Err.e(Err.LOCK_PIN_ERROR, "PIN verification threw", t)
             false
