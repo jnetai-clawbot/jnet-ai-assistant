@@ -1,5 +1,7 @@
 package com.jnetai.assistant.network.dto
 
+import com.google.gson.annotations.SerializedName
+
 // ---- Ollama API ----
 data class OllamaChatMessage(val role: String, val content: String)
 

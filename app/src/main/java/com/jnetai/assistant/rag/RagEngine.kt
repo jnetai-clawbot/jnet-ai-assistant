@@ -12,8 +12,6 @@ import com.jnetai.assistant.document.UnsupportedDocumentException
 import com.jnetai.assistant.util.Err
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withContext
 
 data class RagSearchContext(
@@ -144,21 +142,4 @@ class RagEngine(
     suspend fun getChunks(docId: Long): List<ChunkEntity> = db.chunkDao().getByDocument(docId)
     suspend fun documents(): Flow<List<IndexedDocument>> = db.documentDao().getAll()
     suspend fun documentById(id: Long): IndexedDocument? = db.documentDao().getById(id)
-}
-
-/**
- * Progress flow helper for indexing (streams 0..1).
- */
-fun indexProgressFlow(
-    doIndex: suspend (onProgress: (Float) -> Unit) -> Unit
-): Flow<Float> = flow {
-    doIndex { p -> emit(p.coerceIn(0f, 1f)) }
-    emit(1f)
-}.flowOn(Dispatchers.IO)
-
-/** Small helper to collect a Flow once (avoids importing flow extensions everywhere). */
-suspend fun <T> flowsToList(f: Flow<T>): List<T> = kotlinx.coroutines.flow.first(f).let { list ->
-    // For Flow<List<T>> we return the inner list directly; callers use this only for lists.
-    @Suppress("UNCHECKED_CAST")
-    if (list is List<*>) list as List<T> else listOf(list)
 }

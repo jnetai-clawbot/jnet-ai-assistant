@@ -8,6 +8,7 @@ import android.net.Uri
 import android.provider.Settings
 import com.jnetai.assistant.data.model.AgentAction
 import com.jnetai.assistant.rag.RagEngine
+import kotlinx.coroutines.flow.first
 import com.jnetai.assistant.util.Err
 import java.io.File
 
@@ -120,8 +121,7 @@ class ToolRegistry(
                 val limit = (args["limit"] as? Number)?.toInt()?.coerceIn(1, 10) ?: 4
                 val coll = (args["collection"] as? String)
                 val collIds = if (coll != null) {
-                    val allCols = com.jnetai.assistant.rag.flowsToList(rag.collections())
-                    allCols.filter { it.name.contains(coll, true) }.map { it.id }
+                    rag.collections().first().filter { it.name.contains(coll, true) }.map { it.id }
                 } else null
                 val result = rag.searchRag(query, collIds, null, limit = limit, hybrid = true)
                 if (result.chunks.isEmpty()) "No matching documents found for: $query"

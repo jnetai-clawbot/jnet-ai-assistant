@@ -6,8 +6,6 @@ import android.provider.OpenableColumns
 import com.jnetai.assistant.util.Err
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import org.apache.poi.hwpf.HWPFDocument
-import org.apache.poi.hwpf.extractor.WordExtractor
 import org.apache.poi.ss.usermodel.DataFormatter
 import org.apache.poi.ss.usermodel.WorkbookFactory
 import org.apache.poi.xwpf.usermodel.XWPFDocument
@@ -90,7 +88,9 @@ object DocumentParser {
             return@withContext when {
                 m == "application/pdf" || lower.endsWith(".pdf") -> parsePdf(context, uri)
                 m.contains("wordprocessingml") || lower.endsWith(".docx") -> parseDocx(context, uri)
-                m == "application/msword" || lower.endsWith(".doc") -> parseDoc(context, uri)
+                m == "application/msword" || lower.endsWith(".doc") -> {
+                    throw UnsupportedDocumentException("Legacy .doc files are not supported — please re-save as .docx or convert to PDF.")
+                }
                 m.contains("spreadsheetml") || m == "application/vnd.ms-excel" || lower.endsWith(".xlsx") || lower.endsWith(".xls") -> parseExcel(context, uri)
                 lower.endsWith(".png") || lower.endsWith(".jpg") || lower.endsWith(".jpeg") -> {
                     Err.w("Image OCR not configured; returning empty")
@@ -160,15 +160,6 @@ object DocumentParser {
             }
         } ?: throw UnsupportedDocumentException("Could not read DOCX")
         ParsedDocument(sb.toString().clean())
-    }
-
-    private suspend fun parseDoc(context: Context, uri: Uri): ParsedDocument = withContext(Dispatchers.IO) {
-        val resolver = context.contentResolver
-        val text = resolver.openInputStream(uri)?.use { input ->
-            val doc = HWPFDocument(input)
-            WordExtractor(doc).text ?: ""
-        } ?: throw UnsupportedDocumentException("Could not read DOC")
-        ParsedDocument(text.clean())
     }
 
     private suspend fun parseExcel(context: Context, uri: Uri): ParsedDocument = withContext(Dispatchers.IO) {

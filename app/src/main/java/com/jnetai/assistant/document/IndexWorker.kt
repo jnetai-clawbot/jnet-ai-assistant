@@ -6,6 +6,7 @@ import androidx.work.WorkerParameters
 import com.jnetai.assistant.data.AppGraph
 import com.jnetai.assistant.util.Err
 import java.util.concurrent.CancellationException
+import kotlinx.coroutines.runBlocking
 
 /**
  * Background document indexing via WorkManager. Runs the full pipeline
@@ -23,9 +24,11 @@ class IndexWorker(context: Context, params: WorkerParameters) : Worker(context, 
         if (collId <= 0) return Result.failure()
 
         return try {
-            val graph = AppGraph.get(applicationContext)
-            graph.rag.indexDocument(uri, name, mime, collId)
-            graph.usage.logActivity("RAG", "Indexed $name")
+            runBlocking {
+                val graph = AppGraph.get(applicationContext)
+                graph.rag.indexDocument(uri, name, mime, collId)
+                graph.usage.logActivity("RAG", "Indexed $name")
+            }
             Result.success()
         } catch (e: CancellationException) {
             Err.w("Indexing cancelled: $name")

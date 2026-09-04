@@ -5,6 +5,7 @@ import com.jnetai.assistant.data.db.AppDatabase
 import com.jnetai.assistant.data.model.IndexedDocument
 import com.jnetai.assistant.util.Err
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import java.util.Locale
 
@@ -62,8 +63,8 @@ class HybridSearch(private val db: AppDatabase) {
         documentIds: List<Long>? = null,
         hybrid: Boolean = true
     ): List<SearchResult> = withContext(Dispatchers.Default) {
-        val allChunks = kotlinx.coroutines.flow.first(db.chunkDao().getAll())
-        val docs = kotlinx.coroutines.flow.first(db.documentDao().getAll())
+        val allChunks = db.chunkDao().getAll().first()
+        val docs = db.documentDao().getAll().first()
         val docById = runCatching { docs.groupBy { it.id } }.getOrDefault(emptyMap())
 
         val filtered = allChunks.filter { c ->

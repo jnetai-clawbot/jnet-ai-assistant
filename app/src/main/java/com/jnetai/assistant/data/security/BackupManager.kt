@@ -13,6 +13,7 @@ import com.jnetai.assistant.data.model.IndexedDocument
 import com.jnetai.assistant.data.model.Message
 import com.jnetai.assistant.data.model.UsageRecord
 import com.jnetai.assistant.util.Err
+import kotlinx.coroutines.flow.first
 import java.io.ByteArrayOutputStream
 import java.io.OutputStream
 import java.security.MessageDigest
@@ -103,9 +104,9 @@ class BackupManager(private val context: Context) {
 
     private suspend fun buildEnvelope(): BackupEnvelope {
         val profiles = db.profileDao().getAllOnceIfAvailable()
-        val allCollections = kotlinx.coroutines.flow.first(db.collectionDao().getAll())
-        val docs = kotlinx.coroutines.flow.first(db.documentDao().getAll())
-        val convs = kotlinx.coroutines.flow.first(db.conversationDao().getAll())
+        val allCollections = db.collectionDao().getAll().first()
+        val docs = db.documentDao().getAll().first()
+        val convs = db.conversationDao().getAll().first()
         val settings = db.settingsDao().getAll().associate { it.key to it.value }
 
         val docBackups = docs.map { d ->
@@ -139,7 +140,7 @@ class BackupManager(private val context: Context) {
 
 private suspend fun com.jnetai.assistant.data.db.ProfileDao.getAllOnceIfAvailable(): List<ConnectionProfile> =
     try {
-        kotlinx.coroutines.flow.first(getAll())
+        getAll().first()
     } catch (_: Throwable) {
         emptyList()
     }
