@@ -62,7 +62,7 @@ interface DocumentDao {
     @Update suspend fun update(d: IndexedDocument)
     @Query("DELETE FROM documents WHERE id = :id")
     suspend fun delete(id: Long)
-    @Query("DELETE FROM chunk WHERE documentId = :docId")
+    @Query("DELETE FROM chunks WHERE documentId = :docId")
     suspend fun deleteChunks(docId: Long)
 }
 
@@ -70,11 +70,11 @@ interface DocumentDao {
 interface ChunkDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(chunks: List<Chunk>)
-    @Query("SELECT * FROM chunk WHERE documentId = :docId")
+    @Query("SELECT * FROM chunks WHERE documentId = :docId")
     suspend fun getByDocument(docId: Long): List<Chunk>
-    @Query("SELECT * FROM chunk")
+    @Query("SELECT * FROM chunks")
     suspend fun getAll(): List<Chunk>
-    @Query("DELETE FROM chunk WHERE documentId = :docId")
+    @Query("DELETE FROM chunks WHERE documentId = :docId")
     suspend fun deleteByDocument(docId: Long)
 }
 
