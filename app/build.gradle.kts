@@ -34,12 +34,12 @@ android {
             isMinifyEnabled = false
         }
         release {
-            isMinifyEnabled = true
-            isShrinkResources = true
-            proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
-            )
+            // R8 minification is disabled: APache POI/xmlbeans opt-in classpath
+            // references (javaparser-core, log4j annotations) break R8's missing
+            // class check and would require shipping unused JVM deps. Keeping the
+            // release unminified guarantees correctness and easy crash diagnosis.
+            isMinifyEnabled = false
+            isShrinkResources = false
             signingConfig = signingConfigs.getByName("release")
         }
     }
