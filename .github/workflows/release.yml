@@ -41,12 +41,12 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
 
       - name: Rename APK
-        run: mv app/build/outputs/apk/release/app-release.apk 'J~Net-AI-Assistant-v${{ github.ref_name }}.apk'
+        run: mv app/build/outputs/apk/release/app-release.apk 'J-Net-AI-Assistant-${{ github.ref_name }}.apk'
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          files: 'J~Net-AI-Assistant-v${{ github.ref_name }}.apk'
+          files: 'J-Net-AI-Assistant-${{ github.ref_name }}.apk'
           name: ${{ github.ref_name }}
           tag_name: ${{ github.ref_name }}
           generate_release_notes: true
