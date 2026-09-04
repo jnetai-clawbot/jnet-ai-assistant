@@ -204,7 +204,7 @@ fun ProfileEditor(
             Text("Close", Modifier.clickable { onClose() }, color = NeonCyan, fontSize = 14.sp)
         }
 
-        Column(Modifier.fillMaxWidth().height(1.dp).background(MaterialTheme.colorScheme.surfaceVariant).padding(top = 6.dp))
+        Box(Modifier.fillMaxWidth().height(1.dp).background(MaterialTheme.colorScheme.surfaceVariant))
         Spacer(Modifier.height(12.dp))
 
         EditorField("Profile name", name) { name = it }

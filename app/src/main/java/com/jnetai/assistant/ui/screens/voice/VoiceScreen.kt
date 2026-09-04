@@ -142,6 +142,7 @@ private fun VoiceState.displayName() = when (this) {
     VoiceState.ERROR -> "ERROR"
 }
 
+@Composable
 private fun VoiceState.stateColor() = when (this) {
     VoiceState.IDLE -> MaterialTheme.colorScheme.onSurfaceVariant
     VoiceState.LISTENING, VoiceState.SPEAKING, VoiceState.TRANSCRIBING, VoiceState.THINKING -> NeonCyan

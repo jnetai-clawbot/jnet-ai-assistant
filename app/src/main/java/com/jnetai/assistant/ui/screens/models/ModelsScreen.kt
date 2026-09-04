@@ -39,10 +39,9 @@ import com.jnetai.assistant.ui.theme.NeonPurple
 
 @Composable
 fun ModelsScreen(vm: com.jnetai.assistant.ui.screens.AppViewModel, onPickModel: () -> Unit) {
-    val models by androidx.compose.runtime.produceState(initialValue = emptyList<LocalModel>()) {
-        value = com.jnetai.assistant.data.db.AppDatabase
-            .get(androidx.compose.ui.platform.LocalContext.current)
-            .modelDao().getAllOnce()
+    val appContext = androidx.compose.ui.platform.LocalContext.current.applicationContext
+    val models = androidx.compose.runtime.produceState(initialValue = emptyList<LocalModel>()) {
+        value = com.jnetai.assistant.data.db.AppDatabase.get(appContext).modelDao().getAllOnce()
     }.value
     val hw = androidx.compose.runtime.remember { detectHardware() }
 

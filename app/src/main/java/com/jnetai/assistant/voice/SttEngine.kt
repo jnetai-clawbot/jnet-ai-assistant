@@ -1,6 +1,7 @@
 package com.jnetai.assistant.voice
 
 import android.content.Context
+import android.content.Intent
 import android.os.Bundle
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
