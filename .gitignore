@@ -15,3 +15,4 @@ local.properties
 *.keystore
 *.log
 backups/
+Notes.txt
