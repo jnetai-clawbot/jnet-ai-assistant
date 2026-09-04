@@ -207,7 +207,7 @@ fun ProfileEditor(
         Box(Modifier.fillMaxWidth().height(1.dp).background(MaterialTheme.colorScheme.surfaceVariant))
         Spacer(Modifier.height(12.dp))
 
-        EditorField("Profile name", name) { name = it }
+        EditorField("Profile name", name, onChange = { name = it })
         Spacer(Modifier.height(8.dp))
 
         // Provider type selector
@@ -228,9 +228,9 @@ fun ProfileEditor(
         }
         Spacer(Modifier.height(8.dp))
 
-        EditorField("Endpoint (e.g. https://host or http://192.168.1.50)", endpoint) { endpoint = it }
+        EditorField("Endpoint (e.g. https://host or http://192.168.1.50)", endpoint, onChange = { endpoint = it })
         Spacer(Modifier.height(8.dp))
-        EditorField("Port (optional, e.g. 11434)", port, numeric = true) { port = it }
+        EditorField("Port (optional, e.g. 11434)", port, numeric = true, onChange = { port = it })
         Spacer(Modifier.height(8.dp))
 
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -248,7 +248,7 @@ fun ProfileEditor(
             Text(if (showKey) "Hide" else "Show", Modifier.clickable { showKey = !showKey }, color = NeonCyan, fontSize = 12.sp)
         }
         Spacer(Modifier.height(8.dp))
-        EditorField("Model ID (e.g. deepseek-v4-flash, llama3.1)", model) { model = it }
+        EditorField("Model ID (e.g. deepseek-v4-flash, llama3.1)", model, onChange = { model = it })
         Spacer(Modifier.height(8.dp))
 
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -272,7 +272,7 @@ fun ProfileEditor(
         }
         Spacer(Modifier.height(8.dp))
 
-        EditorField("System prompt (optional)", systemPrompt, multiLine = true) { systemPrompt = it }
+        EditorField("System prompt (optional)", systemPrompt, multiLine = true, onChange = { systemPrompt = it })
         Spacer(Modifier.height(8.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             EditorFieldWeighted("Max tokens", maxTokens, { maxTokens = it }, Modifier.weight(1f), numeric = true)
