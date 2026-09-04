@@ -20,7 +20,9 @@ object VectorStore {
 
     fun encode(vector: List<Double>): String {
         val floats = FloatArray(vector.size) { vector[it].toFloat() }
-        return android.util.Base64.encodeToString(floats.toByteArray(), android.util.Base64.NO_WRAP)
+        val bb = java.nio.ByteBuffer.allocate(floats.size * 4).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+        for (f in floats) bb.putFloat(f)
+        return android.util.Base64.encodeToString(bb.array(), android.util.Base64.NO_WRAP)
     }
 
     fun decode(ref: String): FloatArray? = try {

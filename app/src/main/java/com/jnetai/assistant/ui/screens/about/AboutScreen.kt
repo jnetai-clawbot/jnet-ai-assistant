@@ -41,8 +41,6 @@ import com.jnetai.assistant.ui.theme.NeonPurple
 import java.net.HttpURLConnection
 import java.net.URL
 import org.json.JSONObject
-import java.net.HttpURLConnection
-import java.net.URL
 
 const val GITHUB_REPO = "https://github.com/jnetai-clawbot/jnet-ai-assistant"
 
