@@ -23,3 +23,6 @@
 ### Notes
 - Release APK signed with a stable app-specific keystore. Backed up under Backup/ and password recorded in the password vault.
 - Local on-device GGUF inference engine is not bundled (APK-size/memory); the interface exists and degrades gracefully with clear guidance.
+- Release uses unminified (no R8) build because Apache POI/xmlbeans carry opt-in classpath references that break R8; correctness and easy crash diagnosis prioritised.
+- v1.0.0 release built successfully via GitHub Actions (tag push). APK path: apk/J-Net-AI-Assistant-v1.0.0.apk
+- Release URL (no tag/file to avoid direct download): https://github.com/jnetai-clawbot/jnet-ai-assistant/releases
