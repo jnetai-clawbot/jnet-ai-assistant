@@ -37,10 +37,12 @@ data class AgentTool(
 
 /** Validates tool arguments strictly before execution. */
 object ToolArgs {
+    private val gsonType = object : com.google.gson.reflect.TypeToken<Map<String, Any>>() {}.type
+
     fun validate(tool: AgentTool, argsJson: String): Map<String, Any> {
         val gson = Gson()
         val args: Map<String, Any> = try {
-            gson.fromJson(argsJson, Map::class.java) ?: emptyMap()
+            gson.fromJson(argsJson, gsonType) ?: emptyMap()
         } catch (_: Throwable) {
             throw AgentException.AgentArgs("Args for ${tool.name} are not valid JSON")
         }

@@ -59,6 +59,7 @@ import com.jnetai.assistant.ui.navigation.Dest
 import com.jnetai.assistant.ui.navigation.allDestinations
 import com.jnetai.assistant.ui.screens.AppLockScreen
 import com.jnetai.assistant.ui.screens.AppViewModel
+import com.jnetai.assistant.ui.screens.AppViewModelFactory
 import com.jnetai.assistant.ui.screens.about.AboutScreen
 import com.jnetai.assistant.ui.screens.activity.ActivityScreen
 import com.jnetai.assistant.ui.screens.agents.AgentsScreen
@@ -123,15 +124,12 @@ private fun AppRoot(
     }
     val export = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
         uri?.let { u ->
-            val ok = com.jnetai.assistant.data.security.BackupManager(context).export(u)
-            vm.setStatus(if (ok) "Backup exported (encrypted)" else "Backup failed", if (ok) com.jnetai.assistant.ui.components.Tone.SUCCESS else com.jnetai.assistant.ui.components.Tone.ERROR)
+            vm.exportBackup(u)
         }
     }
     val import = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let { u ->
-            val ok = com.jnetai.assistant.data.security.BackupManager(context).import(u) { true }
-            vm.setStatus(if (ok) "Backup imported" else "Import failed — invalid or corrupted backup", if (ok) com.jnetai.assistant.ui.components.Tone.SUCCESS else com.jnetai.assistant.ui.components.Tone.ERROR)
-            vm.refreshAll()
+            vm.importBackup(u)
         }
     }
 

@@ -62,8 +62,8 @@ class HybridSearch(private val db: AppDatabase) {
         documentIds: List<Long>? = null,
         hybrid: Boolean = true
     ): List<SearchResult> = withContext(Dispatchers.Default) {
-        val allChunks = db.chunkDao().getAll()
-        val docs = db.documentDao().getAll()
+        val allChunks = kotlinx.coroutines.flow.first(db.chunkDao().getAll())
+        val docs = kotlinx.coroutines.flow.first(db.documentDao().getAll())
         val docById = runCatching { docs.groupBy { it.id } }.getOrDefault(emptyMap())
 
         val filtered = allChunks.filter { c ->

@@ -120,7 +120,8 @@ class ToolRegistry(
                 val limit = (args["limit"] as? Number)?.toInt()?.coerceIn(1, 10) ?: 4
                 val coll = (args["collection"] as? String)
                 val collIds = if (coll != null) {
-                    rag.collections().let { flow -> runCatching { kotlinx.coroutines.flow.first(flow).filter { it.name.contains(coll, true) }.map { it.id } }.getOrDefault(emptyList()) }
+                    val allCols = com.jnetai.assistant.rag.flowsToList(rag.collections())
+                    allCols.filter { it.name.contains(coll, true) }.map { it.id }
                 } else null
                 val result = rag.searchRag(query, collIds, null, limit = limit, hybrid = true)
                 if (result.chunks.isEmpty()) "No matching documents found for: $query"
@@ -151,8 +152,7 @@ class ToolRegistry(
             }
             "get_time" -> java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(java.util.Date())
             "device_info" -> {
-                val b = android.os.Build
-                "${b.MANUFACTURER} ${b.MODEL}, Android ${b.VERSION.RELEASE} (API ${b.VERSION.SDK_INT})"
+                "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}, Android ${android.os.Build.VERSION.RELEASE} (API ${android.os.Build.VERSION.SDK_INT})"
             }
             else -> throw AgentException.ToolFailed("Unknown tool '${toolName}'")
         }

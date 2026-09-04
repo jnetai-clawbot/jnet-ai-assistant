@@ -70,12 +70,26 @@ class BackupManager(private val context: Context) {
         // integrity: verify checksum over the structural content
         if (env.checksum != checksumOf(env)) {
             Err.e(Err.BACKUP_ERROR, "Backup checksum mismatch — refusing to import")
-            return false
+            false
+        } else {
+            if (db.profileDao().count() > 0 || db.conversationDao().count() > 0) {
+                if (!onConfirmOverwrite()) {
+                    false
+                } else {
+                    performImport(env)
+                    true
+                }
+            } else {
+                performImport(env)
+                true
+            }
         }
-        if (db.profileDao().count() > 0 || db.conversationDao().count() > 0) {
-            if (!onConfirmOverwrite()) return false
-        }
-        // Import profiles (preserving encrypted key refs — keys remain encrypted)
+    } catch (t: Throwable) {
+        Err.e(Err.BACKUP_ERROR, "Backup import failed", t)
+        false
+    }
+
+    private suspend fun performImport(env: BackupEnvelope) {
         env.profiles.forEach { bp ->
             db.profileDao().insert(bp.profile.copy(id = 0, apiKeyRef = bp.encryptedKeyRef))
         }
@@ -85,16 +99,11 @@ class BackupManager(private val context: Context) {
             bc.messages.forEach { m -> db.messageDao().insert(m.copy(id = 0, conversationId = newId)) }
         }
         env.settings.forEach { (k, v) -> db.settingsDao().put(com.jnetai.assistant.data.model.AppSetting(k, v)) }
-        true
-    } catch (t: Throwable) {
-        Err.e(Err.BACKUP_ERROR, "Backup import failed", t)
-        false
     }
 
     private suspend fun buildEnvelope(): BackupEnvelope {
         val profiles = db.profileDao().getAllOnceIfAvailable()
-        val collections = db.collectionDao().getAll()
-        val allCollections = kotlinx.coroutines.flow.first(allCollections)
+        val allCollections = kotlinx.coroutines.flow.first(db.collectionDao().getAll())
         val docs = kotlinx.coroutines.flow.first(db.documentDao().getAll())
         val convs = kotlinx.coroutines.flow.first(db.conversationDao().getAll())
         val settings = db.settingsDao().getAll().associate { it.key to it.value }

@@ -155,3 +155,10 @@ fun indexProgressFlow(
     doIndex { p -> emit(p.coerceIn(0f, 1f)) }
     emit(1f)
 }.flowOn(Dispatchers.IO)
+
+/** Small helper to collect a Flow once (avoids importing flow extensions everywhere). */
+suspend fun <T> flowsToList(f: Flow<T>): List<T> = kotlinx.coroutines.flow.first(f).let { list ->
+    // For Flow<List<T>> we return the inner list directly; callers use this only for lists.
+    @Suppress("UNCHECKED_CAST")
+    if (list is List<*>) list as List<T> else listOf(list)
+}

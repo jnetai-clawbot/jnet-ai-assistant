@@ -104,7 +104,7 @@ class OpenAiCompatProvider(
         val body = http.request(
             url = url, method = "POST", body = gson.toJson(req),
             apiKey = null, authHeader = "Authorization",
-            timeoutMs = profile.timeoutMs, headers = (auth?.let { mapOf(it.first) to it.second } ?: emptyMap()) + headersMap()
+            timeoutMs = profile.timeoutMs, headers = (auth?.let { mapOf(it.first to it.second) } ?: emptyMap()) + headersMap()
         )
         try {
             val parsed = gson.fromJson(body, ChatCompletionResponse::class.java)
@@ -112,7 +112,7 @@ class OpenAiCompatProvider(
             if (text.isEmpty()) Err.w("Empty completion text from $url")
             ChatResult(
                 text = text,
-                promptTokens = parsed.usage?.promptTokens?.toLong() ?: estimateTokens(messages),
+                promptTokens = parsed.usage?.promptTokens?.toLong() ?: estimateTokens(messages.joinToString("") { it.content }),
                 completionTokens = parsed.usage?.completionTokens?.toLong() ?: estimateTokens(text),
                 toolCalls = parsed.choices.firstOrNull()?.message?.toolCalls?.map { it.toStub() } ?: emptyList()
             )
@@ -140,7 +140,7 @@ class OpenAiCompatProvider(
         )
         val auth = authHeaderValue()
         val url = "${baseUrl()}/chat/completions"
-        val headers = (auth?.let { mapOf(it.first) to it.second } ?: emptyMap()) + headersMap()
+        val headers = (auth?.let { mapOf(it.first to it.second) } ?: emptyMap()) + headersMap()
         val resp = withContext(Dispatchers.IO) {
             http.execute(
                 url = url, method = "POST", body = gson.toJson(req),
@@ -204,7 +204,7 @@ class OpenAiCompatProvider(
         // only call when profile.model would still resolve; graceful fallback on 404
         val auth = authHeaderValue()
         val url = "${baseUrl()}/models"
-        val headers = (auth?.let { mapOf(it.first) to it.second } ?: emptyMap()) + headersMap()
+        val headers = (auth?.let { mapOf(it.first to it.second) } ?: emptyMap()) + headersMap()
         val body = try {
             http.request(url = url, apiKey = null, authHeader = "Authorization", timeoutMs = profile.timeoutMs, headers = headers)
         } catch (e: ApiException) {
@@ -225,7 +225,7 @@ class OpenAiCompatProvider(
         val auth = authHeaderValue()
         val url = "${baseUrl()}/embeddings"
         val req = EmbeddingRequest(model = profile.model, input = texts)
-        val headers = (auth?.let { mapOf(it.first) to it.second } ?: emptyMap()) + headersMap()
+        val headers = (auth?.let { mapOf(it.first to it.second) } ?: emptyMap()) + headersMap()
         val body = try {
             http.request(url = url, method = "POST", body = gson.toJson(req), apiKey = null, authHeader = "Authorization", timeoutMs = profile.timeoutMs, headers = headers)
         } catch (e: ApiException) {
@@ -243,7 +243,7 @@ class OpenAiCompatProvider(
         val start = System.currentTimeMillis()
         val target = "${baseUrl()}/models"
         val auth = authHeaderValue()
-        val headers = (auth?.let { mapOf(it.first) to it.second } ?: emptyMap()) + headersMap()
+        val headers = (auth?.let { mapOf(it.first to it.second) } ?: emptyMap()) + headersMap()
         try {
             val body = http.request(url = target, apiKey = null, authHeader = "Authorization", timeoutMs = profile.timeoutMs, headers = headers)
             val latency = System.currentTimeMillis() - start

@@ -129,6 +129,21 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun refreshAll() { viewModelScope.launch { loadData() } }
 
+    fun exportBackup(uri: Uri) {
+        viewModelScope.launch {
+            val ok = com.jnetai.assistant.data.security.BackupManager(getApplication()).export(uri)
+            setStatus(if (ok) "Backup exported (encrypted)" else "Backup failed", if (ok) com.jnetai.assistant.ui.components.Tone.SUCCESS else com.jnetai.assistant.ui.components.Tone.ERROR)
+        }
+    }
+
+    fun importBackup(uri: Uri) {
+        viewModelScope.launch {
+            val ok = com.jnetai.assistant.data.security.BackupManager(getApplication()).import(uri) { true }
+            setStatus(if (ok) "Backup imported" else "Import failed — invalid or corrupted backup", if (ok) com.jnetai.assistant.ui.components.Tone.SUCCESS else com.jnetai.assistant.ui.components.Tone.ERROR)
+            refreshAll()
+        }
+    }
+
     fun setStatus(msg: String, tone: com.jnetai.assistant.ui.components.Tone = com.jnetai.assistant.ui.components.Tone.INFO) {
         _statusMessage.value = msg
         _statusTone.value = tone
