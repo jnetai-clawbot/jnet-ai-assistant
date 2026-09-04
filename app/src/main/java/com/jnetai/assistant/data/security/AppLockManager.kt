@@ -114,11 +114,17 @@ class AppLockManager(private val context: Context) {
 
     fun canUseBiometric(): Boolean {
         if (!biometricEnabled) return false
-        return when (BiometricManager.from(context).canAuthenticate(
-            BiometricManager.Authenticators.BIOMETRIC_STRONG
-        )) {
-            BiometricManager.BIOMETRIC_SUCCESS -> true
-            else -> false
+        return try {
+            when (BiometricManager.from(context).canAuthenticate(
+                BiometricManager.Authenticators.BIOMETRIC_STRONG
+            )) {
+                BiometricManager.BIOMETRIC_SUCCESS -> true
+                else -> false
+            }
+        } catch (t: Throwable) {
+            // Some devices throw when the biometric service is unavailable.
+            Err.w("Biometric availability check failed: ${t.message}")
+            false
         }
     }
 

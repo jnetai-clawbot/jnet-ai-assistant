@@ -526,12 +526,28 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun unlockWithPin(pin: String): LockDecision {
-        if (!lock.verifyPin(pin)) return LockDecision(false, false)
-        lock.markUnlocked()
-        val mustChange = lock.mustChangePin()
-        if (!mustChange) appLocked.value = false
-        return LockDecision(true, mustChange)
+    /** True while a PIN is being verified/updated (PBKDF2 runs off the main thread). */
+    val unlockBusy = MutableStateFlow(false)
+
+    /** Async PIN unlock — hashing runs on a background dispatcher to avoid UI freezes/ANRs. */
+    fun unlockWithPin(pin: String, onResult: (LockDecision) -> Unit) {
+        if (unlockBusy.value) return
+        unlockBusy.value = true
+        viewModelScope.launch {
+            val ok = withContext(Dispatchers.Default) {
+                runCatching { lock.verifyPin(pin) }.getOrDefault(false)
+            }
+            val decision = if (!ok) {
+                LockDecision(false, false)
+            } else {
+                lock.markUnlocked()
+                val mustChange = lock.mustChangePin()
+                if (!mustChange) appLocked.value = false
+                LockDecision(true, mustChange)
+            }
+            unlockBusy.value = false
+            onResult(decision)
+        }
     }
 
     fun unlockByBiometric() {
@@ -544,15 +560,17 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         appLocked.value = false
     }
 
-    fun changePinFromDefault(newPin: String): Boolean {
-        if (newPin.length < 4) return false
-        return try {
-            lock.setPin(newPin)
-            markUnlocked()
-            true
-        } catch (t: Throwable) {
-            Err.e(Err.LOCK_PIN_ERROR, "Failed to set new PIN", t)
-            false
+    /** Async PIN set — PBKDF2 hashing runs off the main thread; unlocks on success. */
+    fun changePin(newPin: String, onDone: (Boolean) -> Unit) {
+        if (unlockBusy.value) return
+        unlockBusy.value = true
+        viewModelScope.launch {
+            val ok = withContext(Dispatchers.Default) {
+                runCatching { lock.setPin(newPin) }.isSuccess
+            }
+            if (ok) markUnlocked()
+            unlockBusy.value = false
+            onDone(ok)
         }
     }
 

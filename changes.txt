@@ -1,5 +1,15 @@
 # J~Net AI Assistant — Changes
 
+## 2026-09-04 — v1.0.2 (update)
+
+### Fixed
+- PIN unlock no longer freezes/crashes: PBKDF2 PIN verification and PIN setup now run on a background dispatcher (no main-thread hashing → no ANR), with "Unlocking…/Saving…" busy states and double-tap protection.
+- `canUseBiometric()` wrapped so lock screen can't crash on devices with an unavailable biometric service.
+- Unlock and Save-PIN clicks fully guarded (try/catch → inline error, never a crash).
+- Added permanent crash logger: uncaught exceptions are appended to `filesDir/jnet_crash.log` with full stack traces for diagnosis.
+- Default PIN flow: entering `12345678` unlocks and forces a new personal PIN.
+- v1.0.1 APK backed up to Backup/.
+
 ## 2026-09-04 — v1.0.1 (update)
 
 ### Changed

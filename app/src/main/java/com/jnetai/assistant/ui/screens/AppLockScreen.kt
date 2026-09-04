@@ -19,6 +19,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
@@ -33,6 +34,7 @@ import com.jnetai.assistant.data.security.AppLockManager
 import com.jnetai.assistant.ui.theme.NeonCyan
 import com.jnetai.assistant.ui.theme.NeonPurple
 import com.jnetai.assistant.ui.theme.NeonPink
+import com.jnetai.assistant.util.Err
 
 /**
  * Full-screen gate shown before the app opens when Protect App is enabled.
@@ -46,6 +48,7 @@ fun AppLockScreen(vm: AppViewModel) {
     var newPin by remember { mutableStateOf("") }
     var confirmPin by remember { mutableStateOf("") }
     var error by remember { mutableStateOf("") }
+    val busy by vm.unlockBusy.collectAsState()
     val context = androidx.compose.ui.platform.LocalContext.current
 
     Column(
@@ -71,6 +74,7 @@ fun AppLockScreen(vm: AppViewModel) {
                 onValueChange = { newPin = it; error = "" },
                 label = { Text("New PIN") },
                 singleLine = true,
+                enabled = !busy,
                 visualTransformation = PasswordVisualTransformation(),
                 keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Password),
                 modifier = Modifier.width(240.dp)
@@ -81,6 +85,7 @@ fun AppLockScreen(vm: AppViewModel) {
                 onValueChange = { confirmPin = it; error = "" },
                 label = { Text("Confirm PIN") },
                 singleLine = true,
+                enabled = !busy,
                 visualTransformation = PasswordVisualTransformation(),
                 keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Password),
                 modifier = Modifier.width(240.dp)
@@ -90,15 +95,22 @@ fun AppLockScreen(vm: AppViewModel) {
             }
             Spacer(Modifier.height(16.dp))
             Text(
-                "Save",
+                if (busy) "Saving…" else "Save",
                 Modifier
                     .clip(RoundedCornerShape(10.dp))
                     .background(NeonPurple)
-                    .clickable {
-                        when {
-                            newPin.length < 4 -> error = "PIN must be at least 4 characters"
-                            newPin != confirmPin -> error = "PINs do not match"
-                            !vm.changePinFromDefault(newPin) -> error = "Could not save PIN — please try again"
+                    .clickable(enabled = !busy) {
+                        try {
+                            when {
+                                newPin.length < 4 -> error = "PIN must be at least 4 characters"
+                                newPin != confirmPin -> error = "PINs do not match"
+                                else -> vm.changePin(newPin) { ok ->
+                                    if (!ok) error = "Could not save PIN — please try again"
+                                }
+                            }
+                        } catch (t: Throwable) {
+                            com.jnetai.assistant.util.Err.e(Err.LOCK_PIN_ERROR, "Save PIN UI failed", t)
+                            error = "Something went wrong saving the PIN — try again"
                         }
                     }
                     .padding(horizontal = 60.dp, vertical = 12.dp),
@@ -121,6 +133,7 @@ fun AppLockScreen(vm: AppViewModel) {
             onValueChange = { pin = it; error = "" },
             label = { Text("Enter PIN") },
             singleLine = true,
+            enabled = !busy,
             visualTransformation = PasswordVisualTransformation(),
             keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Password),
             modifier = Modifier.width(240.dp)
@@ -130,17 +143,23 @@ fun AppLockScreen(vm: AppViewModel) {
         }
         Spacer(Modifier.height(16.dp))
         Text(
-            "Unlock",
+            if (busy) "Unlocking…" else "Unlock",
             Modifier
                 .clip(RoundedCornerShape(10.dp))
                 .background(NeonPurple)
-                .clickable {
-                    val decision = vm.unlockWithPin(pin)
-                    if (!decision.ok) {
-                        error = "Incorrect PIN"
-                    } else if (decision.mustChangePin) {
-                        phase = "change"
-                        pin = ""
+                .clickable(enabled = !busy) {
+                    try {
+                        vm.unlockWithPin(pin) { decision ->
+                            if (!decision.ok) {
+                                error = "Incorrect PIN"
+                            } else if (decision.mustChangePin) {
+                                phase = "change"
+                                pin = ""
+                            }
+                        }
+                    } catch (t: Throwable) {
+                        com.jnetai.assistant.util.Err.e(Err.LOCK_PIN_ERROR, "Unlock UI failed", t)
+                        error = "Could not check PIN — please try again"
                     }
                 }
                 .padding(horizontal = 60.dp, vertical = 12.dp),
@@ -154,7 +173,7 @@ fun AppLockScreen(vm: AppViewModel) {
             modifier = Modifier.width(280.dp),
             textAlign = androidx.compose.ui.text.style.TextAlign.Center
         )
-        if (vm.lock.canUseBiometric()) {
+        if (!busy && vm.lock.canUseBiometric()) {
             Spacer(Modifier.height(20.dp))
             Text(
                 "Unlock with biometric",

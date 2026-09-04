@@ -16,3 +16,4 @@ local.properties
 *.log
 backups/
 Notes.txt
+Backup/
