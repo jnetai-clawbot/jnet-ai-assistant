@@ -1,0 +1,569 @@
+package com.jnetai.assistant.ui.screens
+
+import android.app.Application
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import android.provider.Settings
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import com.google.gson.Gson
+import com.jnetai.assistant.ai.ChatMessageInput
+import com.jnetai.assistant.ai.EngineEvent
+import com.jnetai.assistant.ai.SendRequest
+import com.jnetai.assistant.data.AppGraph
+import com.jnetai.assistant.data.model.ChatMode
+import com.jnetai.assistant.data.model.ChatSource
+import com.jnetai.assistant.data.model.ConnectionProfile
+import com.jnetai.assistant.data.model.Conversation
+import com.jnetai.assistant.data.model.IndexedDocument
+import com.jnetai.assistant.data.model.Message
+import com.jnetai.assistant.data.model.ProviderType
+import com.jnetai.assistant.util.Err
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+/**
+ * Root application ViewModel. Holds profile list, chat session state, RAG,
+ * agent, usage and settings state. Kept intentionally single for practical
+ * wiring between screens while still delegating heavy work to the engine layer.
+ */
+class AppViewModel(app: Application) : AndroidViewModel(app) {
+    private val graph = AppGraph.get(app)
+    val db = graph.db
+    val settings = graph.settings
+    val usage = graph.usage
+    val chatRepo = graph.chatRepository
+    val rag = graph.rag
+    val secrets = graph.secrets
+    val lock = graph.lock
+    val permissions = graph.permissions
+    val voice = graph.voice
+    val gson = Gson()
+
+    // ---- Profiles ----
+    private val _profiles = MutableStateFlow<List<ConnectionProfile>>(emptyList())
+    val profiles: StateFlow<List<ConnectionProfile>> = _profiles.asStateFlow()
+
+    private val _selectedProfileId = MutableStateFlow(0L)
+    val selectedProfileId: StateFlow<Long> = _selectedProfileId.asStateFlow()
+
+    // ---- Chat ----
+    private val _conversations = MutableStateFlow<List<Conversation>>(emptyList())
+    val conversations: StateFlow<List<Conversation>> = _conversations.asStateFlow()
+
+    private val _messages = MutableStateFlow<List<Message>>(emptyList())
+    val messages: StateFlow<List<Message>> = _messages.asStateFlow()
+
+    private val _activeConversationId = MutableStateFlow(0L)
+    val activeConversationId: StateFlow<Long> = _activeConversationId.asStateFlow()
+
+    val inputText = MutableStateFlow("")
+    val streamingText = MutableStateFlow("")
+    val isStreaming = MutableStateFlow(false)
+    val chatBusy = MutableStateFlow(false)
+
+    private val _chatMode = MutableStateFlow(ChatMode.NORMAL)
+    val chatMode: StateFlow<ChatMode> = _chatMode.asStateFlow()
+
+    private val _selectedCollections = MutableStateFlow<Set<Long>>(emptySet())
+    val selectedCollections: StateFlow<Set<Long>> = _selectedCollections.asStateFlow()
+
+    // ---- Documents ----
+    private val _documents = MutableStateFlow<List<IndexedDocument>>(emptyList())
+    val documents: StateFlow<List<IndexedDocument>> = _documents.asStateFlow()
+
+    val collections = MutableStateFlow<List<com.jnetai.assistant.data.model.DocCollection>>(emptyList())
+
+    // ---- Status ----
+    private val _statusMessage = MutableStateFlow("")
+    val statusMessage: StateFlow<String> = _statusMessage.asStateFlow()
+    private val _statusTone = MutableStateFlow(com.jnetai.assistant.ui.components.Tone.INFO)
+    val statusTone: StateFlow<com.jnetai.assistant.ui.components.Tone> = _statusTone.asStateFlow()
+
+    // ---- Test connection ----
+    val testResult = MutableStateFlow<com.jnetai.assistant.ai.ConnectionTestResult?>(null)
+
+    // ---- Onboarding / lock ----
+    val needsOnboarding = MutableStateFlow(false)
+    val appLocked = MutableStateFlow(true)
+
+    private var streamJob: kotlinx.coroutines.Job? = null
+
+    init {
+        viewModelScope.launch {
+            _profiles.value = withContext(Dispatchers.IO) { firstOf(graph.db.profileDao().getAll()) }
+            db.profileDao().getAll().collectLatest { _profiles.value = it }
+            settings.hasCompletedOnboarding().let { needsOnboarding.value = !it }
+            if (needsOnboarding.value) appLocked.value = false // don't gate onboarding behind lock
+            else appLocked.value = lock.requiresUnlock()
+            loadData()
+        }
+    }
+
+    private suspend fun <T> firstOf(flow: kotlinx.coroutines.flow.Flow<T>): T =
+        kotlinx.coroutines.flow.first(flow)
+
+    suspend fun loadData() {
+        withContext(Dispatchers.IO) {
+            // conversations
+            _conversations.value = firstOf(db.conversationDao().getAll())
+            // documents
+            _documents.value = firstOf(db.documentDao().getAll())
+            // collections
+            collections.value = firstOf(db.collectionDao().getAll())
+            if (_selectedProfileId.value == 0L && _profiles.value.isNotEmpty()) {
+                _selectedProfileId.value = _profiles.value.first().id
+            }
+        }
+    }
+
+    fun refreshAll() { viewModelScope.launch { loadData() } }
+
+    fun setStatus(msg: String, tone: com.jnetai.assistant.ui.components.Tone = com.jnetai.assistant.ui.components.Tone.INFO) {
+        _statusMessage.value = msg
+        _statusTone.value = tone
+    }
+
+    fun selectedProfile(): ConnectionProfile? =
+        _profiles.value.find { it.id == _selectedProfileId.value }
+            ?: _profiles.value.firstOrNull()
+
+    fun selectProfile(id: Long) {
+        _selectedProfileId.value = id
+        viewModelScope.launch {
+            usage.logActivity("AI", "Switched to profile '${profileName(id)}'")
+        }
+    }
+
+    private suspend fun profileName(id: Long): String =
+        _profiles.value.find { it.id == id }?.name ?: "?"
+
+    // ---------- PROFILE CRUD ----------
+    fun saveProfile(p: ConnectionProfile, rawApiKey: String? = null) {
+        viewModelScope.launch {
+            val oldRef = p.apiKeyRef
+            // If a new key was typed, store it encrypted; otherwise keep existing reference
+            val apiKeyRef = if (rawApiKey != null && rawApiKey.isNotBlank()) {
+                val newRef = secrets.put(rawApiKey)
+                if (oldRef.isNotEmpty()) secrets.delete(oldRef)
+                newRef
+            } else {
+                oldRef
+            }
+            val toSave = p.copy(apiKeyRef = apiKeyRef)
+            if (toSave.id == 0L) db.profileDao().insert(toSave) else db.profileDao().update(toSave)
+            refreshAll()
+            setStatus("Profile '${p.name}' saved", com.jnetai.assistant.ui.components.Tone.SUCCESS)
+        }
+    }
+
+    fun deleteProfile(p: ConnectionProfile) {
+        viewModelScope.launch {
+            if (p.apiKeyRef.isNotEmpty()) secrets.delete(p.apiKeyRef)
+            db.profileDao().delete(p)
+            if (_selectedProfileId.value == p.id) _selectedProfileId.value = 0
+            refreshAll()
+            setStatus("Profile deleted", com.jnetai.assistant.ui.components.Tone.INFO)
+        }
+    }
+
+    fun testProfile(p: ConnectionProfile) {
+        testResult.value = null
+        viewModelScope.launch {
+            val provider = graph.providerFactory.create(p) { secrets.get(p.apiKeyRef) }
+            testResult.value = withContext(Dispatchers.IO) { provider.testConnection() }
+            usage.logActivity("AI", "Connection test: ${p.name}", "")
+        }
+    }
+
+    fun listModelsForProfile(p: ConnectionProfile, onResult: (List<String>) -> Unit) {
+        viewModelScope.launch {
+            val provider = graph.providerFactory.create(p) { secrets.get(p.apiKeyRef) }
+            val models = withContext(Dispatchers.IO) { provider.listModels() }
+            onResult(models.map { it.id })
+        }
+    }
+
+    // ---------- CHAT ----------
+    fun newConversation() {
+        viewModelScope.launch {
+            val profile = selectedProfile() ?: run { setStatus("Create a connection profile first", com.jnetai.assistant.ui.components.Tone.ERROR); return@launch }
+            val cid = chatRepo.createConversation(profile.id, profile.model, _chatMode.value, _selectedCollections.value.firstOrNull() ?: 0)
+            _activeConversationId.value = cid
+            _messages.value = emptyList()
+            inputText.value = ""
+            loadData()
+        }
+    }
+
+    fun openConversation(id: Long) {
+        viewModelScope.launch {
+            _activeConversationId.value = id
+            _messages.value = withContext(Dispatchers.IO) { chatRepo.historyFor(id) }
+        }
+    }
+
+    fun setMode(mode: ChatMode) {
+        _chatMode.value = mode
+        if (_activeConversationId.value != 0L) viewModelScope.launch {
+            chatRepo.getConversation(_activeConversationId.value)?.let {
+                db.conversationDao().update(it.copy(mode = mode))
+            }
+        }
+    }
+
+    fun toggleCollection(id: Long) {
+        val current = _selectedCollections.value.toMutableSet()
+        if (current.contains(id)) current.remove(id) else current.add(id)
+        _selectedCollections.value = current
+    }
+
+    fun sendMessage(text: String) {
+        if (text.isBlank() || chatBusy.value) return
+        viewModelScope.launch {
+            val profile = selectedProfile() ?: run { setStatus("No profile selected", com.jnetai.assistant.ui.components.Tone.ERROR); return@launch }
+            if (profile.model.isBlank()) {
+                setStatus("Select a model for this profile", com.jnetai.assistant.ui.components.Tone.ERROR); return@launch
+            }
+
+            chatBusy.value = true
+            isStreaming.value = true
+            streamingText.value = ""
+
+            // ensure a conversation exists
+            var cid = _activeConversationId.value
+            if (cid == 0L) {
+                cid = chatRepo.createConversation(profile.id, profile.model, _chatMode.value, _selectedCollections.value.firstOrNull() ?: 0)
+                _activeConversationId.value = cid
+            }
+            chatRepo.saveMessage(cid, Message(conversationId = cid, role = "user", content = text, providerName = profile.name))
+            if (chatRepo.historyFor(cid).size <= 1) chatRepo.autotitle(cid, text)
+            _messages.value = chatRepo.historyFor(cid)
+            inputText.value = ""
+
+            // build context
+            val mode = _chatMode.value
+            var ragCtx: com.jnetai.assistant.rag.RagSearchContext? = null
+            if (mode == ChatMode.RAG || mode == ChatMode.HYBRID) {
+                val collIds = if (_selectedCollections.value.isNotEmpty()) _selectedCollections.value.toList() else null
+                ragCtx = rag.searchRag(text, collIds, null, limit = settings.getRetrievalCount(), hybrid = settings.getHybridSearch())
+                usage.logActivity("RAG", "Search: '$text' → ${ragCtx?.chunks?.size ?: 0} chunks")
+            }
+
+            // history for model context
+            val history = chatRepo.historyFor(cid).takeLast(settings.getInt("profile.max_history", profile.maxHistory))
+            val messages = buildList {
+                if (profile.systemPrompt.isNotBlank()) add(ChatMessageInput("system", profile.systemPrompt))
+                if (ragCtx != null && ragCtx.contextText.isNotBlank()) {
+                    add(ChatMessageInput("system", "Use the following retrieved documents as the primary factual source. If the answer is not in these documents, say so.\n\n${ragCtx.contextText}"))
+                }
+                history.forEach { m -> add(ChatMessageInput(m.role, m.content)) }
+            }
+
+            val provider = graph.providerFactory.create(profile) { secrets.get(profile.apiKeyRef) }
+            val engine = graph.chatEngine
+
+            usage.record(profile.id, profile.model, 0, 0, category = "chat") // usage recorded on completion below
+
+            streamJob = viewModelScope.launch {
+                val event = engine.run(SendRequest(provider, messages, stream = profile.streaming)) { delta ->
+                    streamingText.value += delta
+                    _messages.value = chatRepo.historyFor(cid).toMutableList().also { list ->
+                        val last = list.lastOrNull()
+                        if (last?.role == "assistant") {
+                            list[list.size - 1] = last.copy(content = last.content + delta)
+                        } else {
+                            list.add(Message(conversationId = cid, role = "assistant", content = delta, providerName = profile.name))
+                        }
+                    }
+                }
+                streamingText.value = ""
+                isStreaming.value = false
+                chatBusy.value = false
+                when (event) {
+                    is EngineEvent.Done -> {
+                        // replace any partial assistant rows with one final message
+                        val finalMsgs = chatRepo.historyFor(cid).toMutableList()
+                        finalMsgs.removeAll { m -> m.role == "assistant" && m.content.isNotBlank() && m.content != event.fullText }
+                        val msg = Message(
+                            conversationId = cid, role = "assistant", content = event.fullText,
+                            sources = chatRepo.encodeSources(event.sources),
+                            promptTokens = event.promptTokens, completionTokens = event.completionTokens,
+                            providerName = profile.name
+                        )
+                        finalMsgs.add(msg)
+                        // persist cleanly: delete rows of this conversation, re-save
+                        db.messageDao().deleteByConversation(cid)
+                        val clean = finalMsgs.filter { it.role == "user" || it.content.isNotBlank() }
+                        clean.forEach { chatRepo.saveMessage(cid, it.copy(id = 0)) }
+                        _messages.value = chatRepo.historyFor(cid)
+                        usage.record(profile.id, profile.model, event.promptTokens, event.completionTokens, category = when (mode) {
+                            ChatMode.RAG, ChatMode.HYBRID -> "rag"; ChatMode.AGENT -> "agent"; else -> "chat"
+                        })
+                        usage.logActivity("AI", "Chat with ${profile.name}/${profile.model}", "mode=${mode.name}", event.promptTokens + event.completionTokens)
+                        chatRepo.touch(cid)
+                        refreshAll()
+                    }
+                    is EngineEvent.Failed -> {
+                        _messages.value = chatRepo.historyFor(cid)
+                        setStatus(event.message, com.jnetai.assistant.ui.components.Tone.ERROR)
+                        usage.logActivity("error", "Failed request", event.message)
+                    }
+                    is EngineEvent.ToolRequested -> {
+                        setStatus("Agent tools requested but not auto-executed in chat mode", com.jnetai.assistant.ui.components.Tone.INFO)
+                    }
+                    else -> {}
+                }
+            }
+        }
+    }
+
+    fun stopStreaming() {
+        streamJob?.cancel()
+        isStreaming.value = false
+        chatBusy.value = false
+        viewModelScope.launch {
+            // persist what streamed so far
+            val cid = _activeConversationId.value
+            if (cid != 0L && streamingText.value.isNotBlank()) {
+                chatRepo.saveMessage(cid, Message(conversationId = cid, role = "assistant", content = streamingText.value, providerName = selectedProfile()?.name ?: ""))
+                _messages.value = chatRepo.historyFor(cid)
+            }
+            streamingText.value = ""
+            setStatus("Generation stopped", com.jnetai.assistant.ui.components.Tone.INFO)
+        }
+    }
+
+    fun regenerateLast() {
+        val msgs = _messages.value
+        val lastUser = msgs.lastOrNull { it.role == "user" } ?: return
+        val cid = _activeConversationId.value
+        // remove last assistant messages
+        viewModelScope.launch {
+            val remaining = msgs.filter { it.role != "assistant" }
+            if (cid != 0L) {
+                db.messageDao().deleteByConversation(cid)
+                remaining.forEach { chatRepo.saveMessage(cid, it) }
+                _messages.value = remaining
+            }
+            sendMessage(lastUser.content)
+        }
+    }
+
+    fun renameConversation(id: Long, title: String) {
+        viewModelScope.launch { chatRepo.rename(id, title); refreshAll() }
+    }
+
+    fun deleteConversation(id: Long) {
+        viewModelScope.launch {
+            chatRepo.deleteConversation(id)
+            if (_activeConversationId.value == id) { _activeConversationId.value = 0; _messages.value = emptyList() }
+            refreshAll()
+        }
+    }
+
+    fun duplicateConversation(id: Long) {
+        viewModelScope.launch { val n = chatRepo.duplicate(id); refreshAll() }
+    }
+
+    // ---------- DOCUMENTS ----------
+    fun importDocument(uri: Uri) {
+        viewModelScope.launch {
+            try {
+                val (name, size) = withContext(Dispatchers.IO) {
+                    com.jnetai.assistant.document.DocumentParser.nameAndSize(getApplication(), uri)
+                }
+                val mime = getApplication<Application>().contentResolver.getType(uri) ?: ""
+                if (!com.jnetai.assistant.document.DocumentParser.isSupported(mime, name)) {
+                    setStatus("Unsupported document: $name", com.jnetai.assistant.ui.components.Tone.ERROR)
+                    return@launch
+                }
+                val collId = _selectedCollections.value.firstOrNull()
+                    ?: collections.value.firstOrNull()?.id
+                    ?: rag.createCollection("Documents")
+                setStatus("Indexing $name…")
+                rag.indexDocument(uri, name, mime, collId) { progress -> /* progress handled via WorkManager path below */ }
+                usage.logActivity("RAG", "Indexed $name")
+                setStatus("Indexed $name", com.jnetai.assistant.ui.components.Tone.SUCCESS)
+                refreshAll()
+            } catch (t: com.jnetai.assistant.document.UnsupportedDocumentException) {
+                setStatus(t.message ?: "Unsupported document", com.jnetai.assistant.ui.components.Tone.ERROR)
+            } catch (t: Throwable) {
+                Err.e(Err.RAG_INDEX_ERROR, "Import failed", t)
+                setStatus("Failed to index document", com.jnetai.assistant.ui.components.Tone.ERROR)
+            }
+        }
+    }
+
+    fun queueIndexingViaWorkManager(uri: Uri, name: String, mime: String, collId: Long) {
+        val data = androidx.work.Data.Builder()
+            .putString("uri", uri.toString())
+            .putString("name", name)
+            .putString("mime", mime)
+            .putLong("collectionId", collId)
+            .build()
+        val req = androidx.work.OneTimeWorkRequestBuilder<com.jnetai.assistant.document.IndexWorker>()
+            .setInputData(data)
+            .build()
+        androidx.work.WorkManager.getInstance(getApplication()).enqueue(req)
+        setStatus("Indexing queued in background")
+    }
+
+    fun deleteDocument(id: Long) {
+        viewModelScope.launch {
+            rag.deleteDocument(id)
+            refreshAll()
+            setStatus("Document removed")
+        }
+    }
+
+    fun createCollection(name: String) {
+        viewModelScope.launch {
+            if (name.isBlank()) return@launch
+            rag.createCollection(name)
+            refreshAll()
+            setStatus("Collection '$name' created", com.jnetai.assistant.ui.components.Tone.SUCCESS)
+        }
+    }
+
+    // ---------- VOICE ----------
+    fun ensureTts() {
+        if (!voice.ttsReady) {
+            graph.tts.init { ok ->
+                if (ok) {
+                    voice.ttsReady = true
+                    viewModelScope.launch {
+                        graph.tts.setRate(settings.getTtsRate())
+                        graph.tts.setPitch(settings.getTtsPitch())
+                    }
+                } else setStatus("TTS unavailable", com.jnetai.assistant.ui.components.Tone.ERROR)
+            }
+        }
+    }
+
+    fun onVoiceMicPress() {
+        ensureTts()
+        val profile = selectedProfile() ?: run { setStatus("Select a profile for voice mode", com.jnetai.assistant.ui.components.Tone.ERROR); return }
+        if (voice.state.value == com.jnetai.assistant.voice.VoiceState.LISTENING) { voice.stopListening(); return }
+        voice.wire(
+            conversation = { transcript ->
+                // build conversation for voice: full history + system
+                val cid = _activeConversationId.value
+                val messages = buildList {
+                    if (profile.systemPrompt.isNotBlank()) add(ChatMessageInput("system", profile.systemPrompt))
+                    if (cid != 0L) {
+                        chatRepo.historyFor(cid).takeLast(settings.getInt("profile.max_history", profile.maxHistory)).forEach { m -> add(ChatMessageInput(m.role, m.content)) }
+                    }
+                    add(ChatMessageInput("user", transcript))
+                }
+                messages
+            },
+            provider = { graph.providerFactory.create(profile) { secrets.get(profile.apiKeyRef) } }
+        )
+        voice.startListening()
+    }
+
+    fun onVoiceInterrupt() {
+        voice.cancel()
+    }
+
+    // ---------- AGENT ----------
+    fun runAgent(prompt: String, onDone: (String) -> Unit) {
+        viewModelScope.launch {
+            val profile = selectedProfile() ?: run { setStatus("Select a profile", com.jnetai.assistant.ui.components.Tone.ERROR); return@launch }
+            usage.logActivity("agent", "Agent: $prompt")
+            // construct tool list + system prompt, call provider streaming, if tools requested execute them with permissions
+            val registry = com.jnetai.assistant.agent.ToolRegistry(
+                getApplication(), permissions,
+                onToolExecuted = { a -> viewModelScope.launch { db.agentDao().insert(a) } },
+                rag = rag
+            )
+            val tools = registry.allTools().filter { t -> permissions.toolsEnabled() }
+            val messages = listOf(
+                ChatMessageInput("system", "You are J~Net AI Assistant's agent. To perform actions, call tools. Never claim an action succeeded unless a tool result confirms it. If you cannot do something, say so."),
+                ChatMessageInput("user", prompt)
+            )
+            val provider = graph.providerFactory.create(profile) { secrets.get(profile.apiKeyRef) }
+            val result = provider.chat(messages)
+            onDone(result.text)
+        }
+    }
+
+    // ---------- ONBOARDING / LOCK ----------
+    fun completeOnboarding() {
+        viewModelScope.launch {
+            settings.setOnboardingDone()
+            needsOnboarding.value = false
+        }
+    }
+
+    fun unlockWithPin(pin: String, onResult: (Boolean) -> Unit) {
+        if (lock.verifyPin(pin)) {
+            lock.markUnlocked()
+            appLocked.value = false
+            onResult(true)
+        } else onResult(false)
+    }
+
+    fun unlockByBiometric() {
+        if (!lock.canUseBiometric()) return
+        // UI layer handles the actual prompt (needs FragmentActivity)
+    }
+
+    fun markUnlocked() {
+        lock.markUnlocked()
+        appLocked.value = false
+    }
+
+    fun exportConversation(id: Long): String {
+        val msgs = _messages.value
+        return buildString {
+            append("# Conversation\n\n")
+            msgs.forEach { m -> append("**${m.role}**: ${m.content}\n\n") }
+        }
+    }
+
+    fun clearActivityLog() {
+        viewModelScope.launch { usage.clearActivity(); setStatus("Activity log cleared") }
+    }
+
+    fun importLocalModel(name: String, uri: String, sizeBytes: Long) {
+        viewModelScope.launch {
+            val modelMgr = com.jnetai.assistant.ml.ModelManager(getApplication(), db)
+            modelMgr.importModel(name = name, fileUri = uri, sizeBytes = sizeBytes)
+            usage.logActivity("models", "Imported local model $name")
+            setStatus("Model imported — configure context/threads in Models", com.jnetai.assistant.ui.components.Tone.SUCCESS)
+        }
+    }
+
+    fun saveVoiceSettings(stt: String, tts: String, rate: Float, pitch: Float, autoSpeak: Boolean, liveMode: Boolean) {
+        viewModelScope.launch {
+            settings.setSttProvider(stt)
+            settings.setTtsProvider(tts)
+            settings.setTtsRate(rate)
+            settings.setTtsPitch(pitch)
+            settings.setAutoSpeak(autoSpeak)
+            settings.setBool("voice.live_mode", liveMode)
+            graph.tts.setRate(rate)
+            graph.tts.setPitch(pitch)
+            setStatus("Voice settings saved", com.jnetai.assistant.ui.components.Tone.SUCCESS)
+            usage.logActivity("settings", "Voice settings updated")
+        }
+    }
+
+    fun activeModelId() = _activeModelId.value
+    fun selectActiveModel(id: Long) { viewModelScope.launch { db.modelDao().getAllOnce().forEach { m -> db.modelDao().update(m.copy(active = m.id == id)) }; _activeModelId.value = id } }
+    fun removeModel(id: Long) { viewModelScope.launch { db.modelDao().delete(id) } }
+    private val _activeModelId = MutableStateFlow(0L)
+    fun setModelLoaded(id: Long, loaded: Boolean) { viewModelScope.launch { db.modelDao().getAllOnce().find { it.id == id }?.let { db.modelDao().update(it.copy(loaded = loaded)) } } }
+}

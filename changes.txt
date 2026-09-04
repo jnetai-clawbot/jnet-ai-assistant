@@ -1,0 +1,25 @@
+# J~Net AI Assistant — Changes
+
+## 2026-09-04 — v1.0.0 (initial release)
+
+### Added
+- Full Android project (Kotlin, Jetpack Compose, Material 3, MVVM, Room, WorkManager).
+- 7-section bottom navigation: Chat, Documents, Models, Agents, Voice, Activity/History, Settings.
+- AI connection profiles with per-profile endpoint, port, API key (encrypted), model, headers, auth type, TLS, streaming, generation params, daily/monthly token limits and connection testing.
+- Providers: OpenCode, Ollama, OpenAI-compatible, custom endpoints, local-device abstraction (capability detection + graceful fallback for on-device inference).
+- Streaming chat (SSE) with stop/regenerate, chat modes (Normal / RAG / Hybrid / Agent / Voice), conversation history with autotitle, rename, delete, duplicate.
+- RAG: parsers for TXT/MD/PDF/CSV/XLSX/DOCX/JSON/HTML/XML/source code; chunker with overlap; embeddings via configured provider; hybrid semantic+keyword search; source citations; document collections; duplicate detection by SHA-256 hash; background indexing via WorkManager.
+- Local model manager: import via file picker, metadata (size/ctx/quantisation/RAM estimate), CPU/GPU/NNA capability detection, activate/remove, low-memory warning (no crash).
+- Voice: live assistant state machine (IDLE/LISTENING/TRANSCRIBING/THINKING/SPEAKING/INTERRUPTED/ERROR), Android STT + Android TTS as pluggable providers, input via mic next to the text box, voice interruption.
+- Agent: extensible tool registry (calculate, open URL, clipboard, RAG search, open settings, read authorised file, time, device info), permission categories, trust levels (ask/destructive/trusted/disabled), strict argument validation, no raw shell execution, action log.
+- Security: Android Keystore AES-256 encryption for API keys; app lock with PIN (PBKDF2 salted hash), biometric unlock, auto-lock timeout; encrypted backup/export with integrity checksum; never stores or logs secrets.
+- Usage/token accounting (today/total, per profile daily & monthly limits, hard-stop) and an activity log with clear-history.
+- First-launch onboarding with "Use local AI" skip-cloud option.
+- About screen: Made by jnetai.com, full version, Check for update (GitHub latest tag, fallback to repo), Share app.
+- Dark-first neon UI, persistent debug logging with stable error codes (E0001–E1001), no intrusive dialogs.
+- GitHub Actions release workflow (tag push) using repo secrets KEYSTORE_BASE64/KEYSTORE_PASSWORD/KEY_ALIAS/KEY_PASSWORD for a stable in-place-updatable signing key.
+- Unit tests: chunking, hybrid ranking helpers, agent arg validation, expression evaluator, profile/auth logic.
+
+### Notes
+- Release APK signed with a stable app-specific keystore. Backed up under Backup/ and password recorded in the password vault.
+- Local on-device GGUF inference engine is not bundled (APK-size/memory); the interface exists and degrades gracefully with clear guidance.
