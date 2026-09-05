@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Build
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Key
@@ -528,7 +529,7 @@ private fun ApiKeyField(
                 modifier = Modifier.size(28.dp)
             ) {
                 Icon(
-                    androidx.compose.material.icons.Icons.Default.ContentCopy,
+                    Icons.Default.ContentCopy,
                     "Copy API key",
                     tint = NeonCyan,
                     modifier = Modifier.size(15.dp)
