@@ -34,7 +34,9 @@ data class ConnectionProfile(
     val maxContextSize: Int = 8192,
     val maxRagChunks: Int = 8,
     val maxDocumentContext: Int = 4000,
-    val maxHistory: Int = 20
+    val maxHistory: Int = 20,
+    /** OpenCode session id sent as the x-opencode-session header (auto-generated per profile). */
+    val opencodeSession: String = ""
 )
 
 enum class ProviderType(val display: String) {

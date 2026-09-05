@@ -193,6 +193,14 @@ fun ProfileEditor(
 
     var showKey by remember { mutableStateOf(false) }
     var availableModels by remember { mutableStateOf<List<String>>(emptyList()) }
+    // OpenCode session header value (stable per profile, auto-generated for new profiles)
+    var opencodeSession by remember {
+        mutableStateOf(
+            profile.opencodeSession.ifBlank {
+                if (profile.id == 0L) java.util.UUID.randomUUID().toString() else ""
+            }
+        )
+    }
 
     // Pre-fill example endpoint + model when the provider type is selected.
     // New profiles get the full example; existing profiles keep typed values
@@ -247,7 +255,15 @@ fun ProfileEditor(
         EditorField("Endpoint (e.g. https://host or http://192.168.1.50)", endpoint, onChange = { endpoint = it })
         Spacer(Modifier.height(8.dp))
         EditorField("Port (optional, e.g. 11434)", port, numeric = true, onChange = { port = it })
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(10.dp))
+
+        // API key directly under the port, with room below it.
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            EditorFieldWeighted("API key (stored encrypted)", if (showKey) apiKey else "•••••••••••••••••", { if (!showKey) showKey = true else apiKey = it }, Modifier.weight(1f))
+            Spacer(Modifier.width(4.dp))
+            Text(if (showKey) "Hide" else "Show", Modifier.clickable { showKey = !showKey }, color = NeonCyan, fontSize = 12.sp)
+        }
+        Spacer(Modifier.height(12.dp))
 
         Row(verticalAlignment = Alignment.CenterVertically) {
             Checkbox(checked = tls, onCheckedChange = { tls = it })
@@ -258,13 +274,11 @@ fun ProfileEditor(
         }
         Spacer(Modifier.height(8.dp))
 
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            EditorFieldWeighted("API key (stored encrypted)", if (showKey) apiKey else "•••••••••••••••••", { if (!showKey) showKey = true else apiKey = it }, Modifier.weight(1f))
-            Spacer(Modifier.width(4.dp))
-            Text(if (showKey) "Hide" else "Show", Modifier.clickable { showKey = !showKey }, color = NeonCyan, fontSize = 12.sp)
-        }
-        Spacer(Modifier.height(8.dp))
         EditorField("Model ID (e.g. deepseek-v4-flash, llama3.1)", model, onChange = { model = it })
+        Spacer(Modifier.height(8.dp))
+
+        // OpenCode session id — required by OpenCode as x-opencode-session (auto-generated).
+        EditorField("OpenCode session (x-opencode-session) — auto-generated", opencodeSession, onChange = { opencodeSession = it })
         Spacer(Modifier.height(8.dp))
 
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -326,7 +340,8 @@ fun ProfileEditor(
                             maxTokens = maxTokens.toIntOrNull() ?: 2048,
                             temperature = temperature.toDoubleOrNull() ?: 0.7,
                             dailyTokenLimit = dailyLimit.toLongOrNull() ?: 0,
-                            monthlyTokenLimit = monthlyLimit.toLongOrNull() ?: 0
+                            monthlyTokenLimit = monthlyLimit.toLongOrNull() ?: 0,
+                            opencodeSession = opencodeSession
                         )
                         onSubmit(p, apiKey.ifBlank { null })
                     }

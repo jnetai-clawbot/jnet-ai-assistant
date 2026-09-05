@@ -1,5 +1,13 @@
 # J~Net AI Assistant — Changes
 
+## 2026-09-05 — v1.0.6 (update)
+
+### Changed
+- Profile editor reordered: **API key now sits directly under Port**, with extra spacing below it.
+- Added per-profile **OpenCode session id** that is sent as the **`x-opencode-session` header** on every OpenCode request (OpenCode service optimisation needs it; requests without it may error from 09/06). A stable id is auto-generated for new profiles, is fully editable, and legacy profiles fall back to a stable per-profile value.
+- Room database migrated v1→v2 (new `opencodeSession` column on profiles). Existing app data is preserved.
+- v1.0.5 APK backed up to Backup/.
+
 ## 2026-09-05 — v1.0.5 (update)
 
 ### Changed

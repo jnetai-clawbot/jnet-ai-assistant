@@ -3,6 +3,7 @@ package com.jnetai.assistant.ai
 import com.google.gson.Gson
 import com.jnetai.assistant.data.model.AuthType
 import com.jnetai.assistant.data.model.ConnectionProfile
+import com.jnetai.assistant.data.model.ProviderType
 import com.jnetai.assistant.network.ApiException
 import com.jnetai.assistant.network.HttpEngine
 import com.jnetai.assistant.network.dto.ChatCompletionRequest
@@ -75,6 +76,27 @@ class OpenAiCompatProvider(
         }
     }
 
+    /**
+     * OpenCode first-class support: every request carries an
+     * x-opencode-session header. OpenCode service optimisation relies on it
+     * and requests without it may error from 09/06 onwards. The session id is
+     * stored per profile (auto-generated) so it stays stable across requests.
+     */
+    private fun opencodeSessionHeader(): Pair<String, String>? {
+        if (profile.providerType != ProviderType.OPENCODE) return null
+        val session = profile.opencodeSession.ifBlank { "jnet-${profile.id.toString(16)}-auto" }
+        return "x-opencode-session" to session
+    }
+
+    /** Merges custom headers + OpenCode session + auth into one header map. */
+    private fun requestHeaders(auth: Pair<String, String>?): Map<String, String> {
+        val m = LinkedHashMap<String, String>()
+        headersMap().forEach { (k, v) -> m[k] = v }
+        opencodeSessionHeader()?.let { m[it.first] = it.second }
+        auth?.let { m[it.first] = it.second }
+        return m
+    }
+
     private fun buildMessages(messages: List<ChatMessageInput>): List<ChatMessageRole> =
         messages.map { ChatMessageRole(it.role, it.content) }
 
@@ -104,7 +126,7 @@ class OpenAiCompatProvider(
         val body = http.request(
             url = url, method = "POST", body = gson.toJson(req),
             apiKey = null, authHeader = "Authorization",
-            timeoutMs = profile.timeoutMs, headers = (auth?.let { mapOf(it.first to it.second) } ?: emptyMap()) + headersMap()
+            timeoutMs = profile.timeoutMs, headers = requestHeaders(auth)
         )
         try {
             val parsed = gson.fromJson(body, ChatCompletionResponse::class.java)
@@ -140,7 +162,7 @@ class OpenAiCompatProvider(
         )
         val auth = authHeaderValue()
         val url = "${baseUrl()}/chat/completions"
-        val headers = (auth?.let { mapOf(it.first to it.second) } ?: emptyMap()) + headersMap()
+        val headers = requestHeaders(auth)
         val resp = withContext(Dispatchers.IO) {
             http.execute(
                 url = url, method = "POST", body = gson.toJson(req),
@@ -204,7 +226,7 @@ class OpenAiCompatProvider(
         // only call when profile.model would still resolve; graceful fallback on 404
         val auth = authHeaderValue()
         val url = "${baseUrl()}/models"
-        val headers = (auth?.let { mapOf(it.first to it.second) } ?: emptyMap()) + headersMap()
+        val headers = requestHeaders(auth)
         val body = try {
             http.request(url = url, apiKey = null, authHeader = "Authorization", timeoutMs = profile.timeoutMs, headers = headers)
         } catch (e: ApiException) {
@@ -225,7 +247,7 @@ class OpenAiCompatProvider(
         val auth = authHeaderValue()
         val url = "${baseUrl()}/embeddings"
         val req = EmbeddingRequest(model = profile.model, input = texts)
-        val headers = (auth?.let { mapOf(it.first to it.second) } ?: emptyMap()) + headersMap()
+        val headers = requestHeaders(auth)
         val body = try {
             http.request(url = url, method = "POST", body = gson.toJson(req), apiKey = null, authHeader = "Authorization", timeoutMs = profile.timeoutMs, headers = headers)
         } catch (e: ApiException) {
@@ -243,7 +265,7 @@ class OpenAiCompatProvider(
         val start = System.currentTimeMillis()
         val target = "${baseUrl()}/models"
         val auth = authHeaderValue()
-        val headers = (auth?.let { mapOf(it.first to it.second) } ?: emptyMap()) + headersMap()
+        val headers = requestHeaders(auth)
         try {
             val body = http.request(url = target, apiKey = null, authHeader = "Authorization", timeoutMs = profile.timeoutMs, headers = headers)
             val latency = System.currentTimeMillis() - start
