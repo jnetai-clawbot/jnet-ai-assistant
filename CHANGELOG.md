@@ -1,9 +1,10 @@
 # Changelog
 
-## [1.0.11] - 2026-09-06
+## [1.0.12] - 2026-09-06
 
 ### Fixed
-- Chat mic only accepts the recogniser's final transcript once per press — interim partial results are ignored, so spoken text no longer appears twice in the message box.
+- GlowCard now lays its content out vertically (was a stacked Box), so response text, sources and action buttons can never overlap — fixes the Voice Assistant response/buttons overlap and latent overlaps on Activity rows and the Security form across every page/tab.
+- Chat mic accepts only the recogniser's final transcript once per press — interim partial results and stale callbacks are ignored, so spoken text no longer appears twice in the message box.
 
 ## [1.0.10] - 2026-09-06
 

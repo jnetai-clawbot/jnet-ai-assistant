@@ -1,10 +1,11 @@
 # J~Net AI Assistant — Changes
 
-## 2026-09-06 — v1.0.11 (update)
+## 2026-09-06 — v1.0.12 (update)
 
 ### Fixed
-- **Chat mic no longer double-fills the message box:** the Android speech recogniser reports many interim (partial) transcripts while you speak and then one final one — the chat mic was adding every single one to the box, so the heard text appeared twice. It now accepts only the **final** result, exactly once per press, and ignores provisional partials. Cancelling also invalidates any stale callback so old text can't be injected later.
-- Version bumped to 1.0.11 (versionCode 12). v1.0.10 APK backed up to Backup/.
+- **Voice Assistant response no longer overlaps the action buttons:** the Response card was a `Box`, so its children (response text, sources and the Copy / Save clip / Share buttons) were all stacked on top of each other. `GlowCard` now lays its content out as a vertical list, so text and buttons can NEVER overlap — this also fixes latent overlaps on the **Activity** rows and the **Security** form and any other multi-child card across every page/tab.
+- **Chat mic no longer double-fills the message box:** the speech recogniser reports many interim (partial) transcripts and then one final one — the chat mic previously added every one to the box. It now accepts only the **final** transcript, exactly once per press; partials and stale callbacks (including after Cancel) are ignored.
+- Version bumped to 1.0.12 (versionCode 13). v1.0.10 APK backed up to Backup/.
 
 ## 2026-09-06 — v1.0.10 (update)
 

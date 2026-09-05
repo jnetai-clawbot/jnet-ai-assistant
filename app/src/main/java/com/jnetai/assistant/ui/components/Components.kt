@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -23,14 +24,19 @@ import com.jnetai.assistant.ui.theme.NeonCyan
 import com.jnetai.assistant.ui.theme.NeonPurple
 import com.jnetai.assistant.ui.theme.NeonPink
 
-/** Subtle neon glow card used throughout the app. */
+/**
+ * Subtle neon glow card used throughout the app.
+ *
+ * The content is placed in a vertical Column so any number of children stack
+ * top-to-bottom (text over text, buttons below text) and can NEVER overlap.
+ */
 @Composable
 fun GlowCard(
     modifier: Modifier = Modifier,
     glow: Color = NeonPurple,
-    content: @Composable () -> Unit
+    content: @Composable ColumnScope.() -> Unit
 ) {
-    Box(
+    Column(
         modifier = modifier
             .clip(RoundedCornerShape(16.dp))
             .background(MaterialTheme.colorScheme.surface)
