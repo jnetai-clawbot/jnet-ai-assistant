@@ -613,31 +613,51 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     val chatMicListening = MutableStateFlow(false)
 
     /**
+     * Incremented on every press/cancel so a stale recogniser callback from a
+     * previous (cancelled/superseded) session can never write into the box.
+     */
+    private var chatMicSeq = 0L
+
+    /**
      * Chat-bar microphone: transcribes speech to text and places it in the
      * chat input box, ready to review and send. This is intentionally NOT the
      * full voice-assistant pipeline — it only uses speech-to-text.
+     *
+     * The recogniser reports many interim (partial) transcripts while you speak
+     * and then one final transcript — only the FINAL result is accepted, exactly
+     * once per press, so the words never end up in the box twice.
      */
     fun onChatMicPress() {
         if (chatMicListening.value) { stopChatMic(); return }
         chatMicListening.value = true
+        val seq = ++chatMicSeq
+        var accepted = false
         setStatus("Listening — speak now", com.jnetai.assistant.ui.components.Tone.INFO)
         try {
             graph.stt.startListening(
-                onResult = { result ->
-                    chatMicListening.value = false
+                onResult = onResult@{ result ->
+                    if (seq != chatMicSeq) return@onResult // stale session — ignore
                     if (result.errorCode != null) {
-                        Err.e(Err.STT_UNAVAILABLE, "Chat mic STT failed: ${result.errorMessage}")
+                        chatMicListening.value = false
+                        Err.e(result.errorCode, "Chat mic STT failed: ${result.errorMessage}")
                         setStatus(result.errorMessage ?: "Speech recognition failed", com.jnetai.assistant.ui.components.Tone.ERROR)
-                    } else if (result.text.isNotBlank()) {
-                        appendToInput(result.text.trim())
-                        setStatus("Transcribed — review and send", com.jnetai.assistant.ui.components.Tone.SUCCESS)
-                    } else {
-                        setStatus("No speech detected", com.jnetai.assistant.ui.components.Tone.INFO)
+                    } else if (result.isFinal) {
+                        // only accept the final, most accurate transcript, once.
+                        if (accepted) return@onResult
+                        accepted = true
+                        chatMicListening.value = false
+                        if (result.text.isNotBlank()) {
+                            appendToInput(result.text.trim())
+                            setStatus("Transcribed — review and send", com.jnetai.assistant.ui.components.Tone.SUCCESS)
+                        } else {
+                            setStatus("No speech detected", com.jnetai.assistant.ui.components.Tone.INFO)
+                        }
                     }
+                    // provisional isFinal=false results are intentionally ignored
                 },
                 onState = { listening ->
-                    chatMicListening.value = listening
-                    if (listening) setStatus("Listening — speak now", com.jnetai.assistant.ui.components.Tone.INFO)
+                    if (seq == chatMicSeq) chatMicListening.value = listening
+                    if (listening && seq == chatMicSeq) setStatus("Listening — speak now", com.jnetai.assistant.ui.components.Tone.INFO)
                 }
             )
         } catch (t: Throwable) {
@@ -648,6 +668,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun stopChatMic() {
+        chatMicSeq++ // invalidate any in-flight recogniser callback for this session
         runCatching { graph.stt.stopListening() }
         chatMicListening.value = false
         setStatus("Cancelled", com.jnetai.assistant.ui.components.Tone.INFO)

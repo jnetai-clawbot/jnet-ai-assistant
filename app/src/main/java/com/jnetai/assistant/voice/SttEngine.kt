@@ -8,7 +8,7 @@ import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 
 /** Result of a transcription. */
-data class TranscriptResult(val text: String, val errorCode: String? = null, val errorMessage: String? = null)
+data class TranscriptResult(val text: String, val errorCode: String? = null, val errorMessage: String? = null, val isFinal: Boolean = false)
 
 /** States for the realtime voice state machine. */
 enum class VoiceState { IDLE, LISTENING, TRANSCRIBING, THINKING, SPEAKING, INTERRUPTED, ERROR }
@@ -59,7 +59,7 @@ class AndroidSttProvider(private val context: Context) : SttProvider {
                 override fun onResults(results: Bundle?) {
                     val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                     val text = matches?.firstOrNull() ?: ""
-                    onResult(TranscriptResult(text))
+                    onResult(TranscriptResult(text, isFinal = true))
                 }
                 override fun onPartialResults(partialResults: Bundle?) {
                     val matches = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)

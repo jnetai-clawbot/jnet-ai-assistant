@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.0.11] - 2026-09-06
+
+### Fixed
+- Chat mic only accepts the recogniser's final transcript once per press — interim partial results are ignored, so spoken text no longer appears twice in the message box.
+
 ## [1.0.10] - 2026-09-06
 
 ### Changed

@@ -1,5 +1,11 @@
 # J~Net AI Assistant — Changes
 
+## 2026-09-06 — v1.0.11 (update)
+
+### Fixed
+- **Chat mic no longer double-fills the message box:** the Android speech recogniser reports many interim (partial) transcripts while you speak and then one final one — the chat mic was adding every single one to the box, so the heard text appeared twice. It now accepts only the **final** result, exactly once per press, and ignores provisional partials. Cancelling also invalidates any stale callback so old text can't be injected later.
+- Version bumped to 1.0.11 (versionCode 12). v1.0.10 APK backed up to Backup/.
+
 ## 2026-09-06 — v1.0.10 (update)
 
 ### Changed
