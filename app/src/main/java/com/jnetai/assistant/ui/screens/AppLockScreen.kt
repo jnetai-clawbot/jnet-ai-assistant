@@ -183,12 +183,12 @@ fun AppLockScreen(vm: AppViewModel) {
             "Reset app protection (type default PIN first, then tap here)",
             Modifier
                 .clip(RoundedCornerShape(8.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant)
-                .clickable(enabled = !busy) {
-                    if (vm.lock.resetLockUsingDefaultPin()) {
+                .background(if (pin == AppLockManager.DEFAULT_PIN) MaterialTheme.colorScheme.primary.copy(alpha = 0.18f) else MaterialTheme.colorScheme.surfaceVariant)
+                .clickable(enabled = !busy && pin == AppLockManager.DEFAULT_PIN) {
+                    if (vm.resetLockUsingDefaultPin()) {
                         vm.markUnlocked()  // unlocks and turns Secure mode off
                     } else {
-                        error = "Not allowed — type the default PIN, then tap Reset"
+                        error = "Reset failed — try again"
                     }
                 }
                 .padding(horizontal = 14.dp, vertical = 9.dp),
