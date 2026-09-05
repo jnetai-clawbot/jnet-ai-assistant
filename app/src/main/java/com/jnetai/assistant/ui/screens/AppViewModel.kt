@@ -108,6 +108,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             try {
                 _profiles.value = withContext(Dispatchers.IO) { firstOf(graph.db.profileDao().getAll()) }
+                migrateOldOpenCodeDefaults()
                 db.profileDao().getAll().collectLatest { _profiles.value = it }
                 settings.hasCompletedOnboarding().let { needsOnboarding.value = !it }
                 if (needsOnboarding.value) appLocked.value = false // don't gate onboarding behind lock
@@ -204,6 +205,26 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
 
     // ---------- PROFILE CRUD ----------
+    /**
+     * v1.0.10 in-place migration: any OpenCode profile still holding the old
+     * prefill (model "opencode-go" or blank) is bumped to the new default
+     * model deepseek-v4-flash with streaming OFF (stability). Profiles that
+     * already use another model are left untouched.
+     */
+    private suspend fun migrateOldOpenCodeDefaults() {
+        try {
+            val changed = _profiles.value
+                .filter { p -> p.providerType == ProviderType.OPENCODE && (p.model == "opencode-go" || p.model.isBlank()) }
+                .map { p -> p.copy(model = "deepseek-v4-flash", streaming = false) }
+            if (changed.isNotEmpty()) {
+                changed.forEach { if (it.id != 0L) db.profileDao().update(it) }
+                Err.i("Migrated ${changed.size} OpenCode profile(s) to deepseek-v4-flash / streaming off")
+            }
+        } catch (t: Throwable) {
+            Err.e(Err.DB_ERROR, "OpenCode defaults migration failed", t)
+        }
+    }
+
     fun saveProfile(p: ConnectionProfile, rawApiKey: String? = null) {
         viewModelScope.launch {
             val oldRef = p.apiKeyRef
@@ -333,53 +354,76 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             usage.record(profile.id, profile.model, 0, 0, category = "chat") // usage recorded on completion below
 
             streamJob = viewModelScope.launch {
-                val event = engine.run(SendRequest(provider, messages, stream = profile.streaming)) { delta ->
-                    streamingText.value += delta
-                    _messages.value = chatRepo.historyFor(cid).toMutableList().also { list ->
-                        val last = list.lastOrNull()
-                        if (last?.role == "assistant") {
-                            list[list.size - 1] = last.copy(content = last.content + delta)
-                        } else {
-                            list.add(Message(conversationId = cid, role = "assistant", content = delta, providerName = profile.name))
+                try {
+                    val event = try {
+                        engine.run(SendRequest(provider, messages, stream = profile.streaming)) { delta ->
+                            streamingText.value += delta
+                            _messages.value = chatRepo.historyFor(cid).toMutableList().also { list ->
+                                val last = list.lastOrNull()
+                                if (last?.role == "assistant") {
+                                    list[list.size - 1] = last.copy(content = last.content + delta)
+                                } else {
+                                    list.add(Message(conversationId = cid, role = "assistant", content = delta, providerName = profile.name))
+                                }
+                            }
                         }
-                    }
-                }
-                streamingText.value = ""
-                isStreaming.value = false
-                chatBusy.value = false
-                when (event) {
-                    is EngineEvent.Done -> {
-                        // replace any partial assistant rows with one final message
-                        val finalMsgs = chatRepo.historyFor(cid).toMutableList()
-                        finalMsgs.removeAll { m -> m.role == "assistant" && m.content.isNotBlank() && m.content != event.fullText }
-                        val msg = Message(
-                            conversationId = cid, role = "assistant", content = event.fullText,
-                            sources = chatRepo.encodeSources(event.sources),
-                            promptTokens = event.promptTokens, completionTokens = event.completionTokens,
-                            providerName = profile.name
+                    } catch (t: kotlinx.coroutines.CancellationException) {
+                        throw t
+                    } catch (t: Throwable) {
+                        // A transient stream/network failure must never crash the app.
+                        // Log it, surface an error status, and keep the user message intact.
+                        Err.e(Err.API_STREAM_ERROR, "Chat request failed (recovered)", t)
+                        EngineEvent.Failed(
+                            code = Err.API_STREAM_ERROR,
+                            message = "Request failed — try again. Details in Error logs."
                         )
-                        finalMsgs.add(msg)
-                        // persist cleanly: delete rows of this conversation, re-save
-                        db.messageDao().deleteByConversation(cid)
-                        val clean = finalMsgs.filter { it.role == "user" || it.content.isNotBlank() }
-                        clean.forEach { chatRepo.saveMessage(cid, it.copy(id = 0)) }
-                        _messages.value = chatRepo.historyFor(cid)
-                        usage.record(profile.id, profile.model, event.promptTokens, event.completionTokens, category = when (mode) {
-                            ChatMode.RAG, ChatMode.HYBRID -> "rag"; ChatMode.AGENT -> "agent"; else -> "chat"
-                        })
-                        usage.logActivity("AI", "Chat with ${profile.name}/${profile.model}", "mode=${mode.name}", event.promptTokens + event.completionTokens)
-                        chatRepo.touch(cid)
-                        refreshAll()
                     }
-                    is EngineEvent.Failed -> {
-                        _messages.value = chatRepo.historyFor(cid)
-                        setStatus(event.message, com.jnetai.assistant.ui.components.Tone.ERROR)
-                        usage.logActivity("error", "Failed request", event.message)
+                    streamingText.value = ""
+                    isStreaming.value = false
+                    chatBusy.value = false
+                    when (event) {
+                        is EngineEvent.Done -> {
+                            // replace any partial assistant rows with one final message
+                            val finalMsgs = chatRepo.historyFor(cid).toMutableList()
+                            finalMsgs.removeAll { m -> m.role == "assistant" && m.content.isNotBlank() && m.content != event.fullText }
+                            val msg = Message(
+                                conversationId = cid, role = "assistant", content = event.fullText,
+                                sources = chatRepo.encodeSources(event.sources),
+                                promptTokens = event.promptTokens, completionTokens = event.completionTokens,
+                                providerName = profile.name
+                            )
+                            finalMsgs.add(msg)
+                            // persist cleanly: delete rows of this conversation, re-save
+                            db.messageDao().deleteByConversation(cid)
+                            val clean = finalMsgs.filter { it.role == "user" || it.content.isNotBlank() }
+                            clean.forEach { chatRepo.saveMessage(cid, it.copy(id = 0)) }
+                            _messages.value = chatRepo.historyFor(cid)
+                            usage.record(profile.id, profile.model, event.promptTokens, event.completionTokens, category = when (mode) {
+                                ChatMode.RAG, ChatMode.HYBRID -> "rag"; ChatMode.AGENT -> "agent"; else -> "chat"
+                            })
+                            usage.logActivity("AI", "Chat with ${profile.name}/${profile.model}", "mode=${mode.name}", event.promptTokens + event.completionTokens)
+                            chatRepo.touch(cid)
+                            refreshAll()
+                        }
+                        is EngineEvent.Failed -> {
+                            _messages.value = chatRepo.historyFor(cid)
+                            setStatus(event.message, com.jnetai.assistant.ui.components.Tone.ERROR)
+                            usage.logActivity("error", "Failed request", event.message)
+                        }
+                        is EngineEvent.ToolRequested -> {
+                            setStatus("Agent tools requested but not auto-executed in chat mode", com.jnetai.assistant.ui.components.Tone.INFO)
+                        }
+                        else -> {}
                     }
-                    is EngineEvent.ToolRequested -> {
-                        setStatus("Agent tools requested but not auto-executed in chat mode", com.jnetai.assistant.ui.components.Tone.INFO)
-                    }
-                    else -> {}
+                } catch (t: kotlinx.coroutines.CancellationException) {
+                    throw t
+                } catch (t: Throwable) {
+                    // Last-resort guard: any handler/database hiccup must not crash the app.
+                    Err.e(Err.API_STREAM_ERROR, "Chat completion handler failed (recovered)", t)
+                    isStreaming.value = false
+                    chatBusy.value = false
+                    streamingText.value = ""
+                    setStatus("Something went wrong completing the reply — see Error logs", com.jnetai.assistant.ui.components.Tone.ERROR)
                 }
             }
         }

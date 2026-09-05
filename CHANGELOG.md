@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.0.10] - 2026-09-06
+
+### Changed
+- Default OpenCode model is now `deepseek-v4-flash`; existing OpenCode profiles on the old prefill are migrated in place.
+- Streaming is OFF by default for new OpenCode profiles (toggle per profile).
+- Chat sends are crash-proofed: transient request/handler failures are logged (E0205) and surfaced as a status instead of crashing.
+
+### Added
+- "Show" on a saved API key now decrypts and reveals the real key in plaintext; a copy-to-clipboard icon copies it.
+
 ## [1.0.9] - 2026-09-05
 
 ### Fixed

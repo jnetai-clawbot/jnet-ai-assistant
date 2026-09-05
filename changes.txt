@@ -1,5 +1,16 @@
 # J~Net AI Assistant — Changes
 
+## 2026-09-06 — v1.0.10 (update)
+
+### Changed
+- **Default OpenCode model is now `deepseek-v4-flash`** — the pre-filled OpenCode profile uses it (was `opencode-go`). Existing OpenCode profiles still on the old prefill (`opencode-go` or blank model) are migrated in place to `deepseek-v4-flash`.
+- **Streaming is OFF by default** for the pre-filled OpenCode profile. Streaming can still be toggled on per profile; non-streaming replies are immune to transient mid-stream errors.
+- **Chat crash hardening:** sending a chat can no longer crash the app on a transient failure — the whole request + completion handler is wrapped with try/catch that logs to the error log (E0205) and shows a friendly status instead of crashing (the occasional 1-off crash after updating is fixed; if a request fails, just send again).
+
+### Added
+- **Show API key now actually reveals the stored key:** tapping "Show" on a saved profile decrypts the encrypted API key and displays it in plaintext (not just bullets). A **copy icon** beside it copies the real key to the clipboard. Copying works even without toggling Show.
+- Version bumped to 1.0.10 (versionCode 11).
+
 ## 2026-09-05 — v1.0.9 (update)
 
 ### Fixed

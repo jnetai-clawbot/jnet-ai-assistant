@@ -231,6 +231,7 @@ fun ProfileEditor(
 
     var showKey by remember { mutableStateOf(false) }
     var availableModels by remember { mutableStateOf<List<String>>(emptyList()) }
+    val context = androidx.compose.ui.platform.LocalContext.current
     // OpenCode session header value (stable per profile, auto-generated for new profiles)
     var opencodeSession by remember {
         mutableStateOf(
@@ -249,6 +250,7 @@ fun ProfileEditor(
         if (isNew) {
             endpoint = d.endpoint
             model = d.model
+            streaming = d.streaming
         } else {
             if (endpoint.isBlank()) endpoint = d.endpoint
             if (model.isBlank()) model = d.model
@@ -308,8 +310,34 @@ fun ProfileEditor(
             value = apiKey,
             onChange = { apiKey = it },
             show = showKey,
-            onToggleShow = { showKey = !showKey },
-            hasStored = profile.apiKeyRef.isNotEmpty() && apiKey.isBlank()
+            onToggleShow = {
+                showKey = !showKey
+                // Revealing the stored key: decrypt it and load it into the field so
+                // "Show" actually displays the real key, not just bullets over a blank.
+                if (showKey && apiKey.isBlank() && profile.apiKeyRef.isNotEmpty()) {
+                    vm.secrets.get(profile.apiKeyRef)?.let { decrypted ->
+                        apiKey = decrypted
+                    } ?: run {
+                        com.jnetai.assistant.util.Err.e(com.jnetai.assistant.util.Err.CRYPTO_ERROR, "Could not decrypt stored API key to reveal")
+                        vm.setStatus("Could not decrypt the stored API key", com.jnetai.assistant.ui.components.Tone.ERROR)
+                    }
+                    if (apiKey.isBlank()) showKey = false
+                }
+            },
+            hasStored = profile.apiKeyRef.isNotEmpty() && apiKey.isBlank(),
+            onCopy = {
+                if (apiKey.isBlank() && profile.apiKeyRef.isNotEmpty()) {
+                    vm.secrets.get(profile.apiKeyRef)?.let { decrypted ->
+                        apiKey = decrypted
+                        copyApiKeyToClipboard(context, decrypted, vm)
+                    } ?: run {
+                        vm.setStatus("Could not decrypt the stored API key", com.jnetai.assistant.ui.components.Tone.ERROR)
+                    }
+                } else {
+                    copyApiKeyToClipboard(context, apiKey, vm)
+                }
+            },
+            context = context
         )
         Spacer(Modifier.height(20.dp))
 
@@ -481,18 +509,31 @@ private fun EditorFieldWeighted(label: String, value: String, onChange: (String)
     }
 }
 
-/** Masked API-key field — always captures input; Show/Hide only changes visibility. */
+/** Masked API-key field — Show reveals the real (decrypted) key, with Copy-to-clipboard. */
 @Composable
 private fun ApiKeyField(
     value: String,
     onChange: (String) -> Unit,
     show: Boolean,
     onToggleShow: () -> Unit,
-    hasStored: Boolean
+    hasStored: Boolean,
+    onCopy: () -> Unit,
+    context: android.content.Context
 ) {
     Column(Modifier.fillMaxWidth()) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("API key (stored encrypted)", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+            androidx.compose.material3.IconButton(
+                onClick = onCopy,
+                modifier = Modifier.size(28.dp)
+            ) {
+                Icon(
+                    androidx.compose.material.icons.Icons.Default.ContentCopy,
+                    "Copy API key",
+                    tint = NeonCyan,
+                    modifier = Modifier.size(15.dp)
+                )
+            }
             Text(
                 if (show) "Hide" else "Show",
                 Modifier.clickable { onToggleShow() }.padding(horizontal = 6.dp, vertical = 4.dp),
@@ -526,5 +567,20 @@ private fun ApiKeyField(
                 fontSize = 11.sp, color = NeonCyan
             )
         }
+    }
+}
+
+private fun copyApiKeyToClipboard(context: android.content.Context, key: String, vm: AppViewModel) {
+    if (key.isBlank()) {
+        vm.setStatus("No API key to copy", com.jnetai.assistant.ui.components.Tone.INFO)
+        return
+    }
+    try {
+        val cm = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+        cm.setPrimaryClip(android.content.ClipData.newPlainText("JNetAI-API-key", key))
+        vm.setStatus("API key copied to clipboard", com.jnetai.assistant.ui.components.Tone.SUCCESS)
+    } catch (t: Throwable) {
+        com.jnetai.assistant.util.Err.e(com.jnetai.assistant.util.Err.CRYPTO_ERROR, "Copy API key to clipboard failed", t)
+        vm.setStatus("Could not copy API key", com.jnetai.assistant.ui.components.Tone.ERROR)
     }
 }
