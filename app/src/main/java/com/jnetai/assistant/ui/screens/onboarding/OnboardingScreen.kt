@@ -44,8 +44,6 @@ private const val STEPS = 4
 @Composable
 fun OnboardingScreen(vm: AppViewModel, onFinished: () -> Unit) {
     var step by remember { mutableStateOf(1) }
-    var protect by remember { mutableStateOf(false) }
-    var pin by remember { mutableStateOf("") }
     var profileName by remember { mutableStateOf("OpenCode") }
     var providerType by remember { mutableStateOf(com.jnetai.assistant.data.model.ProviderType.OPENCODE) }
     var endpoint by remember { mutableStateOf("") }
@@ -79,24 +77,19 @@ fun OnboardingScreen(vm: AppViewModel, onFinished: () -> Unit) {
                 GlowCard(Modifier.fillMaxWidth(), glow = NeonPurple) {
                     Text("Security choice", fontSize = 20.sp, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(8.dp))
+                    Text(
+                        "The app opens WITHOUT a PIN by default. Secure mode is OFF until you enable it in Settings → Security.",
+                        fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(8.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Protect the app with a PIN", modifier = Modifier.weight(1f), fontSize = 14.sp)
-                        androidx.compose.material3.Switch(checked = protect, onCheckedChange = { protect = it })
-                    }
-                    if (protect) {
-                        OutlinedTextField(
-                            value = pin,
-                            onValueChange = { pin = it },
-                            label = { Text("Choose a PIN (4+ digits)") },
-                            singleLine = true,
-                            visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
-                            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Password),
-                            modifier = Modifier.fillMaxWidth()
-                        )
+                        Text("Secure mode (PIN / biometric app lock)", modifier = Modifier.weight(1f), fontSize = 14.sp, color = NeonCyan)
+                        Text("Default: OFF", fontSize = 13.sp, color = NeonCyan, fontWeight = FontWeight.SemiBold)
                     }
                     Text(
-                        "API keys are encrypted with Android Keystore regardless of this choice.",
-                        fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp)
+                        "When enabled, the lock screen accepts the default PIN ${com.jnetai.assistant.data.security.AppLockManager.DEFAULT_PIN} " +
+                            "so you can set a new personal PIN. API keys are encrypted with Android Keystore regardless.",
+                        fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp)
                     )
                 }
             }
@@ -170,7 +163,10 @@ fun OnboardingScreen(vm: AppViewModel, onFinished: () -> Unit) {
                     .background(NeonCyan)
                     .clickable {
                         if (step == STEPS) {
-                            if (protect && pin.length >= 4) { vm.lock.setPin(pin); vm.lock.isEnabled = true }
+                            // Secure mode is OFF by default; the PIN is only
+                            // ever set later from Settings → Security so the
+                            // app always opens with no PIN on a fresh install.
+                            vm.lock.isEnabled = false
                             if (!useLocal && endpoint.isNotBlank() && model.isNotBlank()) {
                                 vm.saveProfile(
                                     com.jnetai.assistant.data.model.ConnectionProfile(

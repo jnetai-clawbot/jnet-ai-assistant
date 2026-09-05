@@ -19,6 +19,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -50,6 +51,10 @@ fun AppLockScreen(vm: AppViewModel) {
     var error by remember { mutableStateOf("") }
     val busy by vm.unlockBusy.collectAsState()
     val context = androidx.compose.ui.platform.LocalContext.current
+
+    LaunchedEffect(Unit) {
+        Err.i("Lock screen shown (phase=$phase, defaultPinInUse=${vm.lock.defaultPinInUse()})")
+    }
 
     Column(
         Modifier
@@ -172,6 +177,37 @@ fun AppLockScreen(vm: AppViewModel) {
             fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.width(280.dp),
             textAlign = androidx.compose.ui.text.style.TextAlign.Center
+        )
+        Spacer(Modifier.height(10.dp))
+        Text(
+            "Reset app protection (type default PIN first, then tap here)",
+            Modifier
+                .clip(RoundedCornerShape(8.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+                .clickable(enabled = !busy) {
+                    if (vm.lock.resetLockUsingDefaultPin()) {
+                        vm.markUnlocked()  // unlocks and turns Secure mode off
+                    } else {
+                        error = "Not allowed — type the default PIN, then tap Reset"
+                    }
+                }
+                .padding(horizontal = 14.dp, vertical = 9.dp),
+            color = NeonPurple, fontSize = 12.sp
+        )
+        Spacer(Modifier.height(8.dp))
+        Text(
+            "Copy diagnostic log (error codes to share)",
+            Modifier
+                .clip(RoundedCornerShape(8.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+                .clickable {
+                    val clip = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                    val log = com.jnetai.assistant.util.Err.readLog()
+                    clip.setPrimaryClip(android.content.ClipData.newPlainText("JNetAI-diagnostics", log.ifBlank { "(no diagnostics yet)" }))
+                    error = "Diagnostics copied to clipboard"
+                }
+                .padding(horizontal = 14.dp, vertical = 9.dp),
+            color = NeonCyan, fontSize = 12.sp
         )
         if (!busy && vm.lock.canUseBiometric()) {
             Spacer(Modifier.height(20.dp))

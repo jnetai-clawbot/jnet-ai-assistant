@@ -1,5 +1,18 @@
 # J~Net AI Assistant — Changes
 
+## 2026-09-04 — v1.0.3 (update)
+
+### Changed
+- **Secure mode is now OFF by default** and the app opens with NO PIN from a fresh install. A PIN is only required after the user enables Secure mode in Settings → Security.
+- Onboarding no longer sets a PIN; its Security step explains that Secure mode defaults to OFF and shows the default PIN for later use.
+- Lock screen recovery options added:
+  - **Reset app protection** — type `12345678` then tap to turn Secure mode off entirely (guaranteed way back in).
+  - **Copy diagnostic log** — copies the error-code log to the clipboard right from the lock screen (no unlock needed), matching how to report a crash/hang.
+- **Diagnostics & crash log** in Settings → Security: view the persistent log (error codes E0001–E1001/FATAL plus timestamps and full stack traces), **Copy to clipboard**, **Share**, and **Clear**.
+- Every Err log entry (with codes) is now also appended to `filesDir/jnet_diagnostics.log`; uncaught crashes and app lifecycle events are logged too (no secrets/PINs ever written).
+- Unlock/change-PIN already run off the main thread (PBKDF2) and are logged step-by-step to trace hangs.
+- v1.0.2 APK backed up to Backup/.
+
 ## 2026-09-04 — v1.0.2 (update)
 
 ### Fixed

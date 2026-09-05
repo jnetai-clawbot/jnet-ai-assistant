@@ -37,7 +37,7 @@ import com.jnetai.assistant.ui.theme.NeonPurple
 import com.jnetai.assistant.ui.theme.NeonPink
 
 @Composable
-fun SecurityScreen(vm: AppViewModel, onBack: () -> Unit) {
+fun SecurityScreen(vm: AppViewModel, onBack: () -> Unit, onDiagnostics: () -> Unit = {}) {
     val lock = vm.lock
     val status by vm.statusMessage.collectAsState()
 
@@ -141,6 +141,27 @@ fun SecurityScreen(vm: AppViewModel, onBack: () -> Unit) {
                     "Android sandbox storage alone is not claimed to be equivalent to full-disk encryption.",
                 fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp)
             )
+        }
+
+        Spacer(Modifier.height(12.dp))
+        SectionHeader("Diagnostics")
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(10.dp))
+                .clickable(onClick = onDiagnostics)
+                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f))
+                .padding(horizontal = 12.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("Diagnostics & crash log", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = NeonCyan)
+                Text(
+                    "View error codes, copy the log to clipboard, or share it — helps diagnose crashes/hangs.",
+                    fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Text("Open →", fontSize = 13.sp, color = NeonCyan)
         }
 
         Spacer(Modifier.height(24.dp))

@@ -172,9 +172,10 @@ private fun AppRoot(
                         onVoiceSettings = { nav.navigate("voice_settings") }
                     )
                 }
-                composable("security") { SecurityScreen(vm, onBack = { nav.popBackStack() }) }
+                composable("security") { SecurityScreen(vm, onBack = { nav.popBackStack() }, onDiagnostics = { nav.navigate("diagnostics") }) }
                 composable("voice_settings") { VoiceSettingsScreen(vm, onBack = { nav.popBackStack() }) }
                 composable("about") { AboutScreen(vm, onBack = { nav.popBackStack() }) }
+                composable("diagnostics") { com.jnetai.assistant.ui.screens.settings.DiagnosticsScreen(onBack = { nav.popBackStack() }) }
             }
         }
     }
@@ -191,7 +192,7 @@ private val PICK_MIME_TYPES = arrayOf(
 private fun BottomBar(nav: NavHostController, currentDest: String, onSelect: (String) -> Unit) {
     val backStack by nav.currentBackStackEntryAsState()
     val current = backStack?.destination?.route ?: currentDest
-    if (current in listOf("security", "voice_settings", "about")) return
+    if (current in listOf("security", "voice_settings", "about", "diagnostics")) return
     NavigationBar(
         containerColor = surfaceDarkElevated,
         modifier = Modifier.navigationBarsPadding()

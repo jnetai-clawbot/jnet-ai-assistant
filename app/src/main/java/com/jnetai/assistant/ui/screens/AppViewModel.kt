@@ -533,13 +533,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun unlockWithPin(pin: String, onResult: (LockDecision) -> Unit) {
         if (unlockBusy.value) return
         unlockBusy.value = true
+        Err.i("PIN unlock attempt starting")
         viewModelScope.launch {
             val ok = withContext(Dispatchers.Default) {
                 runCatching { lock.verifyPin(pin) }.getOrDefault(false)
             }
             val decision = if (!ok) {
+                Err.w("PIN unlock rejected (wrong PIN)")
                 LockDecision(false, false)
             } else {
+                Err.i("PIN accepted (mustChange=${lock.mustChangePin()})")
                 lock.markUnlocked()
                 val mustChange = lock.mustChangePin()
                 if (!mustChange) appLocked.value = false
@@ -556,6 +559,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun markUnlocked() {
+        Err.i("App unlocked")
         lock.markUnlocked()
         appLocked.value = false
     }
@@ -566,12 +570,30 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         unlockBusy.value = true
         viewModelScope.launch {
             val ok = withContext(Dispatchers.Default) {
-                runCatching { lock.setPin(newPin) }.isSuccess
+                runCatching {
+                    lock.setPin(newPin)
+                    true
+                }.getOrDefault(false)
             }
+            Err.i(if (ok) "New PIN saved" else "Failed to save new PIN")
             if (ok) markUnlocked()
             unlockBusy.value = false
             onDone(ok)
         }
+    }
+
+    /** Turns Secure mode off entirely — only allowed when the default PIN is provided. */
+    fun resetLockUsingDefaultPin(): Boolean {
+        val ok = runCatching { lock.verifyPin(com.jnetai.assistant.data.security.AppLockManager.DEFAULT_PIN) }.getOrDefault(false)
+        if (!ok) {
+            Err.w("Reset attempt without default PIN rejected")
+            return false
+        }
+        Err.i("Secure mode disabled via default PIN")
+        lock.isEnabled = false
+        lock.biometricEnabled = false
+        lock.markUnlocked()
+        return true
     }
 
     fun exportConversation(id: Long): String {
