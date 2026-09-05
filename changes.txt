@@ -1,5 +1,19 @@
 # J~Net AI Assistant — Changes
 
+## 2026-09-05 — v1.0.5 (update)
+
+### Changed
+- Bottom navigation labels shortened to fit on one line: **Documents → Docs**, **Settings → Setting** (labels now single-line, no wrapping).
+- **Provider prefills** added — when a provider type is selected while editing/creating a profile, the endpoint (and model) are pre-filled with editable examples:
+  - OpenCode Go: `https://opencode.ai/zen/go/v1` — model **`opencode-go`** (new OpenCode default model)
+  - OpenCode Zen: `https://opencode.ai/zen/v1`
+  - Ollama: `http://localhost:11434/v1`
+  - OpenAI-compatible: `https://api.example.com/v1`
+  - Custom remote server: `http://SERVER_IP:PORT/v1`
+  - Existing profiles keep their values; only blank fields get filled. Everything stays editable.
+- Ollama provider now tolerates a trailing `/v1` or separate port, so `http://localhost:11434/v1` works.
+- v1.0.4 APK backed up to Backup/.
+
 ## 2026-09-05 — v1.0.4 (update)
 
 ### Changed

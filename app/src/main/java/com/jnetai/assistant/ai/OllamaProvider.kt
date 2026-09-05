@@ -36,7 +36,7 @@ class OllamaProvider(
     )
 
     private fun baseUrl(): String {
-        val raw = profile.endpoint.trim().trimEnd('/')
+        val raw = profile.endpoint.trim().trimEnd('/').removeSuffix("/v1")
         val scheme = if (profile.tlsEnabled) "https" else "http"
         val effective = if (raw.startsWith("http://") || raw.startsWith("https://")) raw else "$scheme://$raw"
         return effective + (if (profile.port > 0) ":${profile.port}" else "")

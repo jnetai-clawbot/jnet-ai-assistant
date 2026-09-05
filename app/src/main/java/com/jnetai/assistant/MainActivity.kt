@@ -209,7 +209,14 @@ private fun BottomBar(nav: NavHostController, currentDest: String, onSelect: (St
                     }
                 },
                 icon = { Icon(iconFor(d), contentDescription = d.label, tint = if (current == d.route) NeonCyan else androidx.compose.ui.graphics.Color.Gray) },
-                label = { Text(d.label, fontSize = 10.sp) }
+                label = {
+                    Text(
+                        d.label,
+                        fontSize = 10.sp,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                    )
+                }
             )
         }
     }

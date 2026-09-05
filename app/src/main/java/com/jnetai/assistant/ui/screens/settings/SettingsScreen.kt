@@ -27,6 +27,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -192,6 +193,21 @@ fun ProfileEditor(
 
     var showKey by remember { mutableStateOf(false) }
     var availableModels by remember { mutableStateOf<List<String>>(emptyList()) }
+
+    // Pre-fill example endpoint + model when the provider type is selected.
+    // New profiles get the full example; existing profiles keep typed values
+    // and only get blanks filled in. Everything remains fully editable.
+    val isNew = profile.id == 0L
+    LaunchedEffect(type) {
+        val d = ProfileDefaults.defaultsFor(type)
+        if (isNew) {
+            endpoint = d.endpoint
+            model = d.model
+        } else {
+            if (endpoint.isBlank()) endpoint = d.endpoint
+            if (model.isBlank()) model = d.model
+        }
+    }
 
     Column(
         Modifier
