@@ -1,5 +1,17 @@
 # J~Net AI Assistant — Changes
 
+## 2026-09-05 — v1.0.4 (update)
+
+### Changed
+- **PIN security is never active initially.** The app auto-unlocks and opens straight away — no lock screen on a fresh install, no crash.
+- **Secure mode lives entirely in Settings → Security:**
+  - Toggle **ON** → enter the default PIN (`12345678`) → enter a new personal PIN → confirm it → only the PBKDF2 hash is stored → Secure mode enables.
+  - Toggle **OFF** → Secure mode disables.
+  - The same form doubles as "Change PIN" when Secure mode is already on.
+- **Lock screen simplified to plain unlock** — the former forced-change screen (a crash source) is removed. Entering the personal PIN or `12345678` just unlocks. Reset (turn off) and copy-diagnostics remain available on the lock screen.
+- Hardened startup: any initialisation failure is logged with code E0301 and the app opens unlocked instead of closing.
+- v1.0.3 APK backed up to Backup/.
+
 ## 2026-09-04 — v1.0.3 (update)
 
 ### Changed

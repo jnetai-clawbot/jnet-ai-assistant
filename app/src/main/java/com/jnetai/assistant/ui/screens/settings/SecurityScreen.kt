@@ -9,9 +9,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Checkbox
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
@@ -28,26 +30,34 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.jnetai.assistant.data.security.AppLockManager
 import com.jnetai.assistant.ui.components.GlowCard
 import com.jnetai.assistant.ui.components.SectionHeader
 import com.jnetai.assistant.ui.components.StatusBanner
 import com.jnetai.assistant.ui.screens.AppViewModel
 import com.jnetai.assistant.ui.theme.NeonCyan
 import com.jnetai.assistant.ui.theme.NeonPurple
-import com.jnetai.assistant.ui.theme.NeonPink
 
 @Composable
 fun SecurityScreen(vm: AppViewModel, onBack: () -> Unit, onDiagnostics: () -> Unit = {}) {
     val lock = vm.lock
     val status by vm.statusMessage.collectAsState()
+    val busy by vm.unlockBusy.collectAsState()
 
-    var pin by remember { mutableStateOf("") }
-    var confirm by remember { mutableStateOf("") }
     var enabled by remember { mutableStateOf(lock.isEnabled) }
+    var defaultPin by remember { mutableStateOf("") }
+    var newPin by remember { mutableStateOf("") }
+    var confirm by remember { mutableStateOf("") }
+    var formError by remember { mutableStateOf("") }
     var biometric by remember { mutableStateOf(lock.biometricEnabled) }
     var timeout by remember { mutableStateOf((lock.autoLockTimeoutMs / 60000).toString()) }
 
-    Column(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
+    Column(
+        Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 12.dp)
+    ) {
         Spacer(Modifier.height(8.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("← back", Modifier.clickable { onBack() }, color = NeonCyan, fontSize = 14.sp)
@@ -56,68 +66,70 @@ fun SecurityScreen(vm: AppViewModel, onBack: () -> Unit, onDiagnostics: () -> Un
         if (status.isNotEmpty()) StatusBanner(status, com.jnetai.assistant.ui.components.Tone.INFO, Modifier.fillMaxWidth().padding(top = 6.dp))
         Spacer(Modifier.height(8.dp))
 
+        // ---- Secure mode toggle + PIN enable/change form ----
         GlowCard(Modifier.fillMaxWidth(), glow = NeonPurple) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Protect App", modifier = Modifier.weight(1f), fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                Checkbox(checked = enabled, onCheckedChange = { v ->
+                Column(Modifier.weight(1f)) {
+                    Text("Secure mode (app lock)", fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        if (enabled) "ON — app requires your PIN" else "OFF (default) — app opens without a PIN",
+                        fontSize = 12.sp, color = NeonCyan
+                    )
+                }
+                Switch(checked = enabled, onCheckedChange = { v ->
                     enabled = v
-                    if (v && !lock.hasPin()) {
-                        // require PIN setup below before enforcing
-                        lock.isEnabled = false
-                    } else {
-                        lock.isEnabled = v
+                    formError = ""
+                    if (!v) {
+                        vm.disablePinSecurity { enabled = false }
                     }
                 })
             }
+            Spacer(Modifier.height(4.dp))
             Text(
-                "Require authentication before the app opens. PINs are stored only as salted PBKDF2 hashes — never in the clear.",
+                "Use the default PIN ${AppLockManager.DEFAULT_PIN} to authorise, then choose a personal PIN. " +
+                    "Only a salted PBKDF2 hash of the PIN is stored — never the PIN itself.",
                 fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-        }
-
-        Spacer(Modifier.height(10.dp))
-        GlowCard(Modifier.fillMaxWidth(), glow = NeonCyan) {
-            SectionHeader("Application PIN / password")
-            Txt("New PIN", pin, password = true, onChange = { pin = it })
-            Txt("Confirm PIN", confirm, password = true, onChange = { confirm = it })
             Spacer(Modifier.height(8.dp))
-            Row {
-                Text(
-                    "Set PIN",
-                    Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(NeonCyan.copy(alpha = 0.25f))
-                        .clickable(enabled = pin.length >= 4 && pin == confirm) {
-                            lock.setPin(pin)
-                            lock.isEnabled = enabled
-                            lock.markUnlocked()
-                            vm.setStatus("PIN set", com.jnetai.assistant.ui.components.Tone.SUCCESS)
-                            pin = ""; confirm = ""
+
+            Txt("1. Default PIN (to authorise)", defaultPin, password = true, onChange = { defaultPin = it; formError = "" })
+            Txt("2. New personal PIN", newPin, password = true, onChange = { newPin = it; formError = "" })
+            Txt("3. Confirm new PIN", confirm, password = true, onChange = { confirm = it; formError = "" })
+            if (formError.isNotEmpty()) {
+                Text(formError, color = MaterialTheme.colorScheme.error, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
+            }
+            Spacer(Modifier.height(8.dp))
+            Text(
+                if (busy) "Working…" else if (enabled) "Change PIN" else "Enable Secure mode",
+                Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(NeonCyan.copy(alpha = 0.25f))
+                    .clickable(enabled = !busy) {
+                        vm.enablePinSecurity(defaultPin, newPin, confirm) { err ->
+                            if (err == null) {
+                                enabled = true
+                                formError = ""
+                                defaultPin = ""; newPin = ""; confirm = ""
+                            } else {
+                                formError = err
+                            }
                         }
-                        .padding(horizontal = 14.dp, vertical = 8.dp),
-                    color = NeonCyan, fontSize = 13.sp
-                )
-            }
-            Spacer(Modifier.height(6.dp))
-            if (lock.defaultPinInUse()) {
-                Text(
-                    "Default PIN in use: ${com.jnetai.assistant.data.security.AppLockManager.DEFAULT_PIN}. " +
-                        "Set a new personal PIN above to replace it.",
-                    fontSize = 12.sp, color = NeonCyan
-                )
-            } else {
-                Text(
-                    "If you forget your PIN you can always reset with the documented default PIN.",
-                    fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
+                    }
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                color = NeonCyan, fontSize = 13.sp, fontWeight = FontWeight.SemiBold
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "Lock screen always accepts the default PIN as a recovery path.",
+                fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
 
         Spacer(Modifier.height(10.dp))
         GlowCard(Modifier.fillMaxWidth(), glow = NeonCyan) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Allow biometric unlock", modifier = Modifier.weight(1f), fontSize = 14.sp)
-                Checkbox(checked = biometric, onCheckedChange = { v ->
+                Switch(checked = biometric, onCheckedChange = { v ->
                     biometric = v
                     lock.biometricEnabled = v
                 })
@@ -128,7 +140,10 @@ fun SecurityScreen(vm: AppViewModel, onBack: () -> Unit, onDiagnostics: () -> Un
                 fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(Modifier.height(4.dp))
-            Txt("Auto-lock after (minutes, 0 = only on app close)", timeout) { timeout = it }
+            Txt("Auto-lock after (minutes, 0 = only on app close)", timeout) {
+                timeout = it
+                lock.autoLockTimeoutMs = (it.toLongOrNull() ?: 0L) * 60_000L
+            }
         }
 
         Spacer(Modifier.height(12.dp))

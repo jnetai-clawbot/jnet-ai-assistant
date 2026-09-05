@@ -34,8 +34,8 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-/** Result of a lock-screen PIN attempt. */
-data class LockDecision(val ok: Boolean, val mustChangePin: Boolean)
+/** Result of a lock-screen PIN attempt (kept for API compatibility). */
+data class LockDecision(val ok: Boolean, val mustChangePin: Boolean = false)
 
 /**
  * Root application ViewModel. Holds profile list, chat session state, RAG,
@@ -106,28 +106,37 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     init {
         viewModelScope.launch {
-            _profiles.value = withContext(Dispatchers.IO) { firstOf(graph.db.profileDao().getAll()) }
-            db.profileDao().getAll().collectLatest { _profiles.value = it }
-            settings.hasCompletedOnboarding().let { needsOnboarding.value = !it }
-            if (needsOnboarding.value) appLocked.value = false // don't gate onboarding behind lock
-            else appLocked.value = lock.requiresUnlock()
-            loadData()
+            try {
+                _profiles.value = withContext(Dispatchers.IO) { firstOf(graph.db.profileDao().getAll()) }
+                db.profileDao().getAll().collectLatest { _profiles.value = it }
+                settings.hasCompletedOnboarding().let { needsOnboarding.value = !it }
+                if (needsOnboarding.value) appLocked.value = false // don't gate onboarding behind lock
+                else appLocked.value = lock.requiresUnlock()
+                loadData()
+            } catch (t: Throwable) {
+                // Never let a startup failure close the app — open unlocked with the error logged.
+                Err.e(Err.DB_ERROR, "Startup initialisation failed", t)
+                needsOnboarding.value = false
+                appLocked.value = false
+                setStatus("Startup issue detected — details in diagnostics log", com.jnetai.assistant.ui.components.Tone.ERROR)
+            }
         }
     }
 
     private suspend fun <T> firstOf(flow: Flow<T>): T = flow.first()
 
     suspend fun loadData() {
-        withContext(Dispatchers.IO) {
-            // conversations
-            _conversations.value = firstOf(db.conversationDao().getAll())
-            // documents
-            _documents.value = firstOf(db.documentDao().getAll())
-            // collections
-            collections.value = firstOf(db.collectionDao().getAll())
-            if (_selectedProfileId.value == 0L && _profiles.value.isNotEmpty()) {
-                _selectedProfileId.value = _profiles.value.first().id
+        try {
+            withContext(Dispatchers.IO) {
+                _conversations.value = firstOf(db.conversationDao().getAll())
+                _documents.value = firstOf(db.documentDao().getAll())
+                collections.value = firstOf(db.collectionDao().getAll())
+                if (_selectedProfileId.value == 0L && _profiles.value.isNotEmpty()) {
+                    _selectedProfileId.value = _profiles.value.first().id
+                }
             }
+        } catch (t: Throwable) {
+            Err.e(Err.DB_ERROR, "loadData failed", t)
         }
     }
 
@@ -529,8 +538,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** True while a PIN is being verified/updated (PBKDF2 runs off the main thread). */
     val unlockBusy = MutableStateFlow(false)
 
-    /** Async PIN unlock — hashing runs on a background dispatcher to avoid UI freezes/ANRs. */
-    fun unlockWithPin(pin: String, onResult: (LockDecision) -> Unit) {
+    /**
+     * Async PIN unlock. Simply unlocks the app when the PIN matches (default
+     * or personal) — no forced-change screen. Secure mode is only ever set up
+     * from Settings → Security (default PIN → new PIN → confirm → store hash).
+     */
+    fun unlockWithPin(pin: String, onResult: (Boolean) -> Unit) {
         if (unlockBusy.value) return
         unlockBusy.value = true
         Err.i("PIN unlock attempt starting")
@@ -538,24 +551,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             val ok = withContext(Dispatchers.Default) {
                 runCatching { lock.verifyPin(pin) }.getOrDefault(false)
             }
-            val decision = if (!ok) {
-                Err.w("PIN unlock rejected (wrong PIN)")
-                LockDecision(false, false)
-            } else {
-                Err.i("PIN accepted (mustChange=${lock.mustChangePin()})")
-                lock.markUnlocked()
-                val mustChange = lock.mustChangePin()
-                if (!mustChange) appLocked.value = false
-                LockDecision(true, mustChange)
-            }
+            Err.i(if (ok) "PIN accepted" else "PIN rejected")
+            if (ok) markUnlocked()
             unlockBusy.value = false
-            onResult(decision)
+            onResult(ok)
         }
-    }
-
-    fun unlockByBiometric() {
-        if (!lock.canUseBiometric()) return
-        // UI layer handles the actual prompt (needs FragmentActivity)
     }
 
     fun markUnlocked() {
@@ -564,8 +564,20 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         appLocked.value = false
     }
 
-    /** Async PIN set — PBKDF2 hashing runs off the main thread; unlocks on success. */
-    fun changePin(newPin: String, onDone: (Boolean) -> Unit) {
+    /**
+     * Enables Secure mode from Settings:
+     *   1) the default PIN must be entered,
+     *   2) a new personal PIN is captured + confirmed by the UI,
+     *   3) only its PBKDF2 hash is stored, then protection turns on.
+     * Returns an error message, or null on success.
+     */
+    fun enablePinSecurity(defaultPin: String, newPin: String, confirmedPin: String, onDone: (String?) -> Unit) {
+        if (defaultPin != com.jnetai.assistant.data.security.AppLockManager.DEFAULT_PIN) {
+            onDone("Enter the default PIN (${com.jnetai.assistant.data.security.AppLockManager.DEFAULT_PIN}) to enable")
+            return
+        }
+        if (newPin.length < 4) { onDone("New PIN must be at least 4 characters"); return }
+        if (newPin != confirmedPin) { onDone("New PIN and confirmation do not match"); return }
         if (unlockBusy.value) return
         unlockBusy.value = true
         viewModelScope.launch {
@@ -575,14 +587,29 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     true
                 }.getOrDefault(false)
             }
-            Err.i(if (ok) "New PIN saved" else "Failed to save new PIN")
-            if (ok) markUnlocked()
+            if (ok) {
+                lock.isEnabled = true
+                Err.i("Secure mode enabled (new PIN stored as hash)")
+                setStatus("Secure mode enabled", com.jnetai.assistant.ui.components.Tone.SUCCESS)
+            } else {
+                Err.e(Err.LOCK_PIN_ERROR, "Failed to store new PIN")
+            }
             unlockBusy.value = false
-            onDone(ok)
+            onDone(if (ok) null else "Could not enable Secure mode — please try again")
         }
     }
 
-    /** Turns Secure mode off entirely — only allowed when the default PIN is provided. */
+    /** Turns Secure mode off from Settings. */
+    fun disablePinSecurity(onDone: (Boolean) -> Unit) {
+        Err.i("Secure mode disabled from Settings")
+        lock.isEnabled = false
+        lock.biometricEnabled = false
+        lock.markUnlocked()
+        appLocked.value = false
+        onDone(true)
+    }
+
+    /** Turns Secure mode off entirely from the lock screen — requires the default PIN. */
     fun resetLockUsingDefaultPin(): Boolean {
         val ok = runCatching { lock.verifyPin(com.jnetai.assistant.data.security.AppLockManager.DEFAULT_PIN) }.getOrDefault(false)
         if (!ok) {

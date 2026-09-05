@@ -16,13 +16,16 @@ A complete private AI workstation for Android. Chat with cloud AI, run local mod
 
 ## Default PIN
 
-Secure mode (app lock) is **OFF by default** — the app opens without a PIN. Enable it in **Settings → Security → Protect App**.
+PIN security (Secure mode) is **OFF by default** — the app opens without a PIN and never locks until you opt in.
 
-- **Default PIN: `12345678`**
+Enable it in **Settings → Security**:
+1. Toggle **Secure mode ON**.
+2. Enter the default PIN **`12345678`**.
+3. Enter a new personal PIN and confirm it.
+4. Only the hashed PIN is stored and the app lock turns on.
+
 - PIN fields are shown masked (•••••).
-- While the default PIN is in use the lock screen shows it clearly.
-- The **first time you unlock with the default PIN you are forced to set a personal PIN** before the app opens.
-- On the lock screen you can also tap **Reset app protection** (type `12345678` first) to turn Secure mode off, and **Copy diagnostic log** to grab error codes for support.
+- The lock screen always accepts `12345678` as a recovery path, and has **Reset app protection** (type `12345678`, tap Reset) plus **Copy diagnostic log**.
 - Settings → Security → **Diagnostics & crash log** shows the log with Copy/Share/Clear.
 - PINs are stored only as salted PBKDF2 hashes — never in the clear.
 
