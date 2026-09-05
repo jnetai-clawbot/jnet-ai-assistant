@@ -785,8 +785,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             val count = withContext(Dispatchers.IO) {
                 val convs = firstOf(db.conversationDao().getAll())
-                convs.forEach { db.messageDao().deleteByConversation(it.id) }
-                convs.forEach { db.conversationDao().delete(it) }
+                convs.forEach { c -> db.messageDao().deleteByConversation(c.id) }
+                convs.forEach { db.conversationDao().delete(it.id) }
                 convs.size
             }
             _activeConversationId.value = 0
