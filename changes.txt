@@ -1,5 +1,20 @@
 # J~Net AI Assistant — Changes
 
+## 2026-09-05 — v1.0.9 (update)
+
+### Fixed
+- **Streaming request failed / base-URL fix:** default pre-filled endpoint URLs now end with a trailing `/` (e.g. `https://opencode.ai/zen/go/v1/`, `http://localhost:11434/v1/`, `https://api.example.com/v1/`, `http://SERVER_IP:PORT/v1/`). Providers strip the trailing slash before appending their path segment, and the port stays blank when https is already in the URL — verified working with a valid API key. Existing profiles keep their current values.
+- **Chat mic now transcribes (was: nothing happened on mic tap):** the mic button in the Chat bar now does speech-to-text only and places the transcribed text straight into the message box, ready to review and send. It no longer launches the full voice-assistant pipeline. The mic button glows ● while listening; tapping again cancels. (The Voice Assistant tab's mic is unchanged.)
+
+### Added
+- **Error logs entry in Settings:** a new "Error logs" row opens the diagnostics/crash-log viewer where you can Copy the log to clipboard and Clear it (plus Share).
+- **History screen (Issue: history for all modes):** a dedicated History screen lists every past conversation across Normal / RAG / Hybrid / Agent / Voice modes with Open, Rename, Duplicate and Delete, plus **Export history** (writes every conversation and response to a `.txt` file) and **Clear history** (with confirmation dialog). Reached from the Chat header (history icon) and from Settings → History.
+- **Voice Assistant history:** every completed voice turn (transcript + AI response) is now persisted into a Voice conversation so voice sessions appear in History too.
+- **Clear history + Export history in Settings:** rows under General → "Clear history" (with confirmation) and "Export history" (SAF file picker).
+- **Share conversation button:** a share icon in the Chat header copies the current conversation (chat + response) to the clipboard and opens the system share sheet.
+- **Voice Assistant response actions:** the AI response now has **Copy response** (copy to clipboard), **Save clip** (synthesise the response to a WAV file in Downloads — no permission needed on Android 10+; on Android 8/9 the storage permission is requested once) and **Share** buttons.
+- Version bumped to 1.0.9 (versionCode 10). v1.0.8 APK backed up to Backup/.
+
 ## 2026-09-05 — v1.0.8 (update)
 
 ### Changed

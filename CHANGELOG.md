@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.0.9] - 2026-09-05
+
+### Fixed
+- Default provider base URLs now end with a trailing `/` (`https://opencode.ai/zen/go/v1/`, `http://localhost:11434/v1/` etc.) with the port blank — fixes streaming request failures on OpenCode Go / Ollama-style endpoints.
+- Chat mic now transcribes speech into the message box (STT-only) instead of doing nothing / running the full voice assistant pipeline.
+
+### Added
+- Error logs section in Settings (copy log to clipboard, share, clear).
+- History screen for all modes (Normal / RAG / Hybrid / Agent / Voice) with Open, Rename, Duplicate, Delete, Export history and Clear history (with confirmation).
+- Voice Assistant responses are persisted to history automatically.
+- Share conversation button (copies to clipboard + share sheet).
+- Voice response actions: Copy response, Save clip (WAV to Downloads, no permission on Android 10+, runtime permission on 8/9), and Share.
+
 ## [1.0.0] - Initial Release
 
 ### Added

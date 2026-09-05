@@ -121,6 +121,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 setStatus("Startup issue detected — details in diagnostics log", com.jnetai.assistant.ui.components.Tone.ERROR)
             }
         }
+        // Issue #5 — persist every completed Voice Assistant turn into history
+        // so voice conversations are visible alongside chat history.
+        viewModelScope.launch {
+            voice.currentTurn.collect { turn ->
+                if (turn != null && turn.transcript.isNotBlank() && turn.response.isNotBlank()) {
+                    persistVoiceTurn(turn)
+                }
+            }
+        }
     }
 
     private suspend fun <T> firstOf(flow: Flow<T>): T = flow.first()
@@ -528,6 +537,105 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         voice.cancel()
     }
 
+    /**
+     * Issue #5 — writes a finished Voice Assistant turn (user transcript +
+     * AI response) into the most recent Voice-mode conversation, creating a
+     * new one if needed. This gives the Voice Assistant real history.
+     */
+    private suspend fun persistVoiceTurn(turn: com.jnetai.assistant.voice.VoiceTurn) {
+        try {
+            val cid = withContext(Dispatchers.IO) {
+                val profile = selectedProfile() ?: return@withContext 0L
+                val existing = firstOf(db.conversationDao().getAll())
+                    .filter { it.mode == ChatMode.VOICE }
+                    .maxByOrNull { it.updatedAt }
+                val id = existing?.id ?: chatRepo.createConversation(profile.id, profile.model, ChatMode.VOICE)
+                chatRepo.saveMessage(id, Message(conversationId = id, role = "user", content = turn.transcript, providerName = profile.name))
+                chatRepo.saveMessage(id, Message(
+                    conversationId = id, role = "assistant", content = turn.response,
+                    sources = chatRepo.encodeSources(turn.sources), providerName = profile.name
+                ))
+                chatRepo.touch(id)
+                id
+            }
+            if (cid != 0L) loadData()
+        } catch (t: Throwable) {
+            Err.e(Err.DB_ERROR, "persistVoiceTurn failed", t)
+        }
+    }
+
+    // ---------- CHAT MIC (STT → text input) ----------
+    /** True while the chat mic is listening for a transcription. */
+    val chatMicListening = MutableStateFlow(false)
+
+    /**
+     * Chat-bar microphone: transcribes speech to text and places it in the
+     * chat input box, ready to review and send. This is intentionally NOT the
+     * full voice-assistant pipeline — it only uses speech-to-text.
+     */
+    fun onChatMicPress() {
+        if (chatMicListening.value) { stopChatMic(); return }
+        chatMicListening.value = true
+        setStatus("Listening — speak now", com.jnetai.assistant.ui.components.Tone.INFO)
+        try {
+            graph.stt.startListening(
+                onResult = { result ->
+                    chatMicListening.value = false
+                    if (result.errorCode != null) {
+                        Err.e(Err.STT_UNAVAILABLE, "Chat mic STT failed: ${result.errorMessage}")
+                        setStatus(result.errorMessage ?: "Speech recognition failed", com.jnetai.assistant.ui.components.Tone.ERROR)
+                    } else if (result.text.isNotBlank()) {
+                        appendToInput(result.text.trim())
+                        setStatus("Transcribed — review and send", com.jnetai.assistant.ui.components.Tone.SUCCESS)
+                    } else {
+                        setStatus("No speech detected", com.jnetai.assistant.ui.components.Tone.INFO)
+                    }
+                },
+                onState = { listening ->
+                    chatMicListening.value = listening
+                    if (listening) setStatus("Listening — speak now", com.jnetai.assistant.ui.components.Tone.INFO)
+                }
+            )
+        } catch (t: Throwable) {
+            Err.e(Err.STT_UNAVAILABLE, "Chat mic failed to start", t)
+            chatMicListening.value = false
+            setStatus("Could not start speech recognition", com.jnetai.assistant.ui.components.Tone.ERROR)
+        }
+    }
+
+    fun stopChatMic() {
+        runCatching { graph.stt.stopListening() }
+        chatMicListening.value = false
+        setStatus("Cancelled", com.jnetai.assistant.ui.components.Tone.INFO)
+    }
+
+    private fun appendToInput(text: String) {
+        inputText.value = if (inputText.value.isBlank()) text else inputText.value.trimEnd() + " " + text
+    }
+
+    /**
+     * Issue #7 — saves the given voice-assistant response text as a WAV audio
+     * file in Downloads via the TTS synthesizer. Runs off the main thread.
+     */
+    fun saveVoiceResponseAsAudio(text: String, onResult: (Boolean, String) -> Unit) {
+        if (text.isBlank()) {
+            onResult(false, "No response to save")
+            return
+        }
+        if (graph.tts.isReady) {
+            com.jnetai.assistant.voice.VoiceClipSaver.save(getApplication(), graph.tts, text, onResult)
+        } else {
+            graph.tts.init { ready ->
+                if (ready) {
+                    voice.ttsReady = true
+                    com.jnetai.assistant.voice.VoiceClipSaver.save(getApplication(), graph.tts, text, onResult)
+                } else {
+                    onResult(false, "Speech engine unavailable")
+                }
+            }
+        }
+    }
+
     // ---------- AGENT ----------
     fun runAgent(prompt: String, onDone: (String) -> Unit) {
         viewModelScope.launch {
@@ -652,6 +760,77 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         return buildString {
             append("# Conversation\n\n")
             msgs.forEach { m -> append("**${m.role}**: ${m.content}\n\n") }
+        }
+    }
+
+    /** Text of the currently open conversation (used by Share). */
+    fun currentConversationText(): String {
+        val title = _conversations.value.find { it.id == _activeConversationId.value }?.takeIf { it.id != 0L }
+            ?: run {
+                _conversations.value.maxByOrNull { it.updatedAt }?.takeIf { _messages.value.isNotEmpty() }
+            }
+        return buildString {
+            append("# ${title?.title ?: "Conversation"}\n\n")
+            _messages.value.forEach { m ->
+                if (m.content.isNotBlank()) append("**${m.role}**: ${m.content}\n\n")
+            }
+        }
+    }
+
+    /**
+     * Issue #5 — clears ALL conversation history (every mode) and the active
+     * view. Confirmation is handled by the UI before this is called.
+     */
+    fun clearAllHistory() {
+        viewModelScope.launch {
+            val count = withContext(Dispatchers.IO) {
+                val convs = firstOf(db.conversationDao().getAll())
+                convs.forEach { db.messageDao().deleteByConversation(it.id) }
+                convs.forEach { db.conversationDao().delete(it) }
+                convs.size
+            }
+            _activeConversationId.value = 0
+            _messages.value = emptyList()
+            loadData()
+            setStatus("Cleared $count conversation(s)", com.jnetai.assistant.ui.components.Tone.INFO)
+            usage.logActivity("settings", "Cleared all conversation history", "$count conversations")
+        }
+    }
+
+    /**
+     * Issue #5 — exports every conversation (all modes, every message) as a
+     * readable markdown/text file to the given SAF Uri.
+     */
+    fun exportHistoryToUri(uri: Uri) {
+        viewModelScope.launch {
+            val body = withContext(Dispatchers.IO) {
+                val convs = firstOf(db.conversationDao().getAll())
+                val fmt = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.ROOT)
+                buildString {
+                    append("# J~Net AI Assistant — Conversation History\n")
+                    append("Exported ${fmt.format(java.util.Date())}\n\n")
+                    if (convs.isEmpty()) {
+                        append("(no conversations yet)\n")
+                    }
+                    convs.forEachIndexed { i, c ->
+                        append("---\n\n")
+                        append("## ${i + 1}. ${c.title}\n")
+                        append("Mode: ${c.mode.display} · Model: ${c.model.ifBlank { "—" }} · Updated: ${fmt.format(java.util.Date(c.updatedAt))}\n\n")
+                        db.messageDao().getByConversationOnce(c.id).forEach { m ->
+                            if (m.content.isNotBlank()) append("**${m.role}**: ${m.content}\n\n")
+                        }
+                    }
+                }
+            }
+            try {
+                getApplication<Application>().contentResolver.openOutputStream(uri)?.use { out ->
+                    out.write(body.toByteArray())
+                } ?: throw IllegalStateException("No output stream")
+                setStatus("History exported", com.jnetai.assistant.ui.components.Tone.SUCCESS)
+            } catch (t: Throwable) {
+                Err.e(Err.BACKUP_ERROR, "History export failed", t)
+                setStatus("Could not export history", com.jnetai.assistant.ui.components.Tone.ERROR)
+            }
         }
     }
 

@@ -1,5 +1,9 @@
 package com.jnetai.assistant.ui.screens.chat
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.content.Intent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -8,6 +12,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -23,9 +28,10 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AttachFile
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -45,6 +51,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -63,6 +70,7 @@ fun ChatScreen(
     onViewConversations: () -> Unit,
     onPickAttachments: () -> Unit
 ) {
+    val context = LocalContext.current
     val messages by vm.messages.collectAsState()
     val profiles by vm.profiles.collectAsState()
     val selectedProfileId by vm.selectedProfileId.collectAsState()
@@ -73,8 +81,7 @@ fun ChatScreen(
     val input by vm.inputText.collectAsState()
     val mode by vm.chatMode.collectAsState()
     val busy by vm.chatBusy.collectAsState()
-
-    var showHistory by remember { mutableStateOf(false) }
+    val micListening by vm.chatMicListening.collectAsState()
 
     val listState = rememberLazyListState()
 
@@ -92,8 +99,11 @@ fun ChatScreen(
             )
             ProfileSelector(vm, profiles, selectedProfileId)
             Spacer(Modifier.width(4.dp))
-            IconButton(onClick = { showHistory = !showHistory }) {
-                Icon(Icons.Default.AttachFile, "History", tint = NeonCyan)
+            IconButton(onClick = onViewConversations) {
+                Icon(Icons.Default.History, "History", tint = NeonCyan)
+            }
+            IconButton(onClick = { shareConversation(vm, context) }) {
+                Icon(Icons.Default.Share, "Share conversation", tint = NeonPurple)
             }
         }
 
@@ -101,10 +111,6 @@ fun ChatScreen(
 
         AnimatedVisibility(visible = status.isNotEmpty()) {
             StatusBanner(status, tone, Modifier.padding(horizontal = 12.dp, vertical = 4.dp))
-        }
-
-        if (showHistory) {
-            ConversationList(vm, onDone = { showHistory = false })
         }
 
         LazyColumn(
@@ -134,9 +140,10 @@ fun ChatScreen(
             input, { vm.inputText.value = it },
             canSend = input.isNotBlank() && !busy,
             streaming = streaming,
+            micListening = micListening && !streaming,
             onSend = { vm.sendMessage(input) },
             onStop = vm::stopStreaming,
-            onMic = { vm.onVoiceMicPress() },
+            onMic = { vm.onChatMicPress() },
             onPickAttachments = onPickAttachments
         )
     }
@@ -280,6 +287,7 @@ private fun InputBar(
     onInput: (String) -> Unit,
     canSend: Boolean,
     streaming: Boolean,
+    micListening: Boolean,
     onSend: () -> Unit,
     onStop: () -> Unit,
     onMic: () -> Unit,
@@ -324,9 +332,13 @@ private fun InputBar(
                     .size(46.dp)
                     .clip(RoundedCornerShape(50))
                     .clickable(onClick = onMic)
-                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.25f))
+                    .background(if (micListening) Color(0xFFFF2D78).copy(alpha = 0.8f) else MaterialTheme.colorScheme.primary.copy(alpha = 0.25f))
             ) {
-                Icon(Icons.Default.Mic, "Voice", Modifier.align(Alignment.Center), tint = Color(0xFFFF2D78))
+                if (micListening) {
+                    Text("●", Modifier.align(Alignment.Center), color = Color.White, fontSize = 18.sp)
+                } else {
+                    Icon(Icons.Default.Mic, "Voice", Modifier.align(Alignment.Center), tint = Color(0xFFFF2D78))
+                }
             }
         }
         Spacer(Modifier.width(6.dp))
@@ -346,37 +358,31 @@ private fun InputBar(
     }
 }
 
-@Composable
-private fun ConversationList(vm: AppViewModel, onDone: () -> Unit) {
-    val conversations by vm.conversations.collectAsState()
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .height(220.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .padding(horizontal = 12.dp)
-    ) {
-        Text("Conversations", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = NeonCyan)
-        LazyColumn(Modifier.fillMaxSize()) {
-            items(conversations) { c ->
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(8.dp))
-                        .clickable { vm.openConversation(c.id); onDone() }
-                        .padding(vertical = 6.dp, horizontal = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(Modifier.weight(1f)) {
-                        Text(c.title, color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp)
-                        Text(
-                            "${c.model} · ${java.text.SimpleDateFormat("MMM d HH:mm").format(java.util.Date(c.updatedAt))}",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp
-                        )
-                    }
-                    Text("+", Modifier.clickable { vm.newConversation(); onDone() }, color = NeonCyan)
-                }
-            }
+/**
+ * Issue #6 (share conversation): copies the current conversation text to the
+ * clipboard and offers the system share sheet.
+ */
+private fun shareConversation(vm: AppViewModel, context: Context) {
+    val text = vm.currentConversationText()
+    if (text.isBlank()) {
+        vm.setStatus("Nothing to share yet", com.jnetai.assistant.ui.components.Tone.INFO)
+        return
+    }
+    try {
+        val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        cm.setPrimaryClip(ClipData.newPlainText("JNetAI-conversation", text))
+    } catch (t: Throwable) {
+        com.jnetai.assistant.util.Err.e(com.jnetai.assistant.util.Err.BACKUP_ERROR, "Clipboard write failed", t)
+    }
+    try {
+        val share = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_SUBJECT, "J~Net AI conversation")
+            putExtra(Intent.EXTRA_TEXT, text)
         }
+        context.startActivity(Intent.createChooser(share, "Share conversation"))
+        vm.setStatus("Conversation copied to clipboard", com.jnetai.assistant.ui.components.Tone.SUCCESS)
+    } catch (t: Throwable) {
+        vm.setStatus("Copied to clipboard (no share app available)", com.jnetai.assistant.ui.components.Tone.SUCCESS)
     }
 }

@@ -1,9 +1,11 @@
 package com.jnetai.assistant.voice
 
 import android.content.Context
+import android.os.Bundle
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import com.jnetai.assistant.util.Err
+import java.io.File
 import java.util.Locale
 
 /**
@@ -17,6 +19,9 @@ interface TtsProvider {
     fun setRate(rate: Float)
     fun setPitch(pitch: Float)
     fun setLanguage(lang: String)
+    val isReady: Boolean
+    /** Synthesises [text] to a WAV file (no playback). onResult(true) on success. */
+    fun synthesizeToFile(text: String, outputFile: File, onResult: (Boolean) -> Unit)
 }
 
 class AndroidTtsProvider(private val context: Context) : TtsProvider {
@@ -60,6 +65,45 @@ class AndroidTtsProvider(private val context: Context) : TtsProvider {
     }
 
     private var currentUtteranceId: String? = null
+
+    override val isReady: Boolean get() = ready
+
+    override fun synthesizeToFile(text: String, outputFile: File, onResult: (Boolean) -> Unit) {
+        if (!ready || tts == null) {
+            Err.e(Err.TTS_UNAVAILABLE, "TTS not ready — synthesis ignored")
+            onResult(false)
+            return
+        }
+        val synthId = "synth-${System.currentTimeMillis()}"
+        tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+            override fun onStart(utteranceId: String?) {}
+            override fun onDone(utteranceId: String?) {
+                if (utteranceId == synthId) {
+                    if (outputFile.exists() && outputFile.length() > 0) onResult(true)
+                    else {
+                        Err.w("synthesizeToFile finished but no audio produced")
+                        onResult(false)
+                    }
+                }
+            }
+            @Deprecated("Deprecated in Java")
+            override fun onError(utteranceId: String?) {
+                if (utteranceId == synthId) {
+                    Err.w("synthesizeToFile onError for $synthId")
+                    onResult(false)
+                }
+            }
+        })
+        val result = runCatching { tts?.synthesizeToFile(text, Bundle(), outputFile, synthId) }
+            .getOrElse { t ->
+                Err.e(Err.TTS_UNAVAILABLE, "synthesizeToFile threw", t)
+                TextToSpeech.ERROR
+            }
+        if (result != TextToSpeech.SUCCESS) {
+            Err.e(Err.TTS_UNAVAILABLE, "synthesizeToFile returned $result")
+            onResult(false)
+        }
+    }
 
     override fun stop() { tts?.stop() }
     override fun setRate(rate: Float) { pendingRate = rate; if (ready) tts?.setSpeechRate(rate) }

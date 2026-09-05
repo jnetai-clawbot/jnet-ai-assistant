@@ -65,6 +65,7 @@ import com.jnetai.assistant.ui.screens.activity.ActivityScreen
 import com.jnetai.assistant.ui.screens.agents.AgentsScreen
 import com.jnetai.assistant.ui.screens.chat.ChatScreen
 import com.jnetai.assistant.ui.screens.docs.DocumentsScreen
+import com.jnetai.assistant.ui.screens.history.HistoryScreen
 import com.jnetai.assistant.ui.screens.models.ModelsScreen
 import com.jnetai.assistant.ui.screens.onboarding.OnboardingScreen
 import com.jnetai.assistant.ui.screens.settings.SecurityScreen
@@ -132,6 +133,11 @@ private fun AppRoot(
             vm.importBackup(u)
         }
     }
+    val exportHistory = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri ->
+        uri?.let { u ->
+            vm.exportHistoryToUri(u)
+        }
+    }
 
     if (needsOnboarding) {
         OnboardingScreen(vm = vm, onFinished = {})
@@ -151,8 +157,22 @@ private fun AppRoot(
                 composable(Dest.Chat.route) {
                     ChatScreen(
                         vm,
-                        onViewConversations = {},
+                        onViewConversations = { nav.navigate("history") },
                         onPickAttachments = { pickDocs.launch(PICK_MIME_TYPES) }
+                    )
+                }
+                composable("history") {
+                    HistoryScreen(
+                        vm,
+                        onBack = { nav.popBackStack() },
+                        onOpenConversation = { id ->
+                            vm.openConversation(id)
+                            nav.navigate(Dest.Chat.route) {
+                                popUpTo(Dest.Chat.route) { saveState = true }
+                                launchSingleTop = true
+                            }
+                        },
+                        onExportHistory = { exportHistory.launch("JNet-AI-History.txt") }
                     )
                 }
                 composable(Dest.Documents.route) {
@@ -169,7 +189,10 @@ private fun AppRoot(
                         onAbout = { nav.navigate("about") },
                         onExport = { export.launch("JNet-AI-Assistant-backup.enc") },
                         onImport = { import.launch(arrayOf("application/octet-stream", "*/*")) },
-                        onVoiceSettings = { nav.navigate("voice_settings") }
+                        onVoiceSettings = { nav.navigate("voice_settings") },
+                        onErrorLogs = { nav.navigate("diagnostics") },
+                        onOpenHistory = { nav.navigate("history") },
+                        onExportHistory = { exportHistory.launch("JNet-AI-History.txt") }
                     )
                 }
                 composable("security") { SecurityScreen(vm, onBack = { nav.popBackStack() }, onDiagnostics = { nav.navigate("diagnostics") }) }
@@ -192,7 +215,7 @@ private val PICK_MIME_TYPES = arrayOf(
 private fun BottomBar(nav: NavHostController, currentDest: String, onSelect: (String) -> Unit) {
     val backStack by nav.currentBackStackEntryAsState()
     val current = backStack?.destination?.route ?: currentDest
-    if (current in listOf("security", "voice_settings", "about", "diagnostics")) return
+    if (current in listOf("security", "voice_settings", "about", "diagnostics", "history")) return
     NavigationBar(
         containerColor = surfaceDarkElevated,
         modifier = Modifier.navigationBarsPadding()

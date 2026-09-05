@@ -60,15 +60,24 @@ fun SettingsScreen(
     onAbout: () -> Unit,
     onExport: () -> Unit,
     onImport: () -> Unit,
-    onVoiceSettings: () -> Unit
+    onVoiceSettings: () -> Unit,
+    onErrorLogs: () -> Unit = {},
+    onOpenHistory: () -> Unit = {},
+    onExportHistory: () -> Unit = {}
 ) {
     val profiles by vm.profiles.collectAsState()
     val status by vm.statusMessage.collectAsState()
     val testResult by vm.testResult.collectAsState()
 
     var editing by remember { mutableStateOf<ConnectionProfile?>(null) }
+    var showClearConfirm by remember { mutableStateOf(false) }
 
-    Column(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
+    Column(
+        Modifier
+            .fillMaxSize()
+            .verticalScroll(androidx.compose.foundation.rememberScrollState())
+            .padding(horizontal = 12.dp)
+    ) {
         Spacer(Modifier.height(12.dp))
         Text("Settings", fontSize = 22.sp, fontWeight = FontWeight.Bold)
         if (status.isNotEmpty()) StatusBanner(status, vm.statusTone.collectAsState().value, Modifier.fillMaxWidth().padding(top = 6.dp))
@@ -108,7 +117,11 @@ fun SettingsScreen(
         SectionHeader("General")
         SettingsRow("Security", "App lock · biometric · encryption", onSecuritySettings)
         SettingsRow("Voice & Speech", "STT / TTS providers & settings", onVoiceSettings)
+        SettingsRow("History", "Past conversations across all modes · open / export / clear", onOpenHistory)
+        SettingsRow("Export history", "Save every conversation and response to a file", onExportHistory)
+        SettingsRow("Clear history", "Delete all conversations (with confirmation)") { showClearConfirm = true }
         SettingsRow("About", "Version, updates, share", onAbout)
+        SettingsRow("Error logs", "Diagnostics, error codes — copy to clipboard & clear", onErrorLogs)
         SettingsRow("Export backup", "Encrypted export of settings, profiles, chat", onExport)
         SettingsRow("Import backup", "Restore from an encrypted backup", onImport)
 
@@ -126,6 +139,23 @@ fun SettingsScreen(
             onClose = { editing = null },
             testResult = testResult,
             onTest = { vm.testProfile(profile) }
+        )
+    }
+
+    if (showClearConfirm) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showClearConfirm = false },
+            title = { Text("Clear all history?") },
+            text = { Text("This deletes every conversation and response across all modes (Chat, RAG, Hybrid, Agent, Voice). This cannot be undone.") },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    showClearConfirm = false
+                    vm.clearAllHistory()
+                }) { Text("Clear all", color = com.jnetai.assistant.ui.theme.NeonPink) }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { showClearConfirm = false }) { Text("Cancel") }
+            }
         )
     }
 }
