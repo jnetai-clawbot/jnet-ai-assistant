@@ -70,9 +70,13 @@ fun StatusBanner(
         )
         Text(
             message,
-            modifier = Modifier.padding(start = 8.dp),
+            modifier = Modifier
+                .padding(start = 8.dp)
+                .weight(1f),
             color = MaterialTheme.colorScheme.onSurface,
-            fontSize = 13.sp
+            fontSize = 13.sp,
+            maxLines = 4,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
         )
     }
 }

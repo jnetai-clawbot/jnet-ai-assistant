@@ -146,18 +146,23 @@ private fun DocumentCard(doc: com.jnetai.assistant.data.model.IndexedDocument, o
                 null, tint = NeonPurple, modifier = Modifier.size(28.dp)
             )
             Column(Modifier.weight(1f).padding(start = 10.dp)) {
-                Text(doc.name, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
+                Text(
+                    doc.name, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface, maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                )
                 Row {
-                    Text(prettySize(doc.sizeBytes), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+                    Text(prettySize(doc.sizeBytes), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, maxLines = 1)
                     Text(" · ", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
                     Text(
                         if (doc.pageCount > 0) "${doc.pageCount} pages" else "1 page",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp
+                        color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, maxLines = 1
                     )
                 }
                 Text(
                     "Status: ${doc.status.display} · ${SimpleDateFormat("MMM d HH:mm", Locale.ROOT).format(Date(doc.updatedAt))}",
-                    color = statusColor(doc.status), fontSize = 11.sp
+                    color = statusColor(doc.status), fontSize = 11.sp, maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                 )
             }
             IconButton(onClick = onDelete) {

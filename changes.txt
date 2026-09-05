@@ -1,5 +1,15 @@
 # J~Net AI Assistant — Changes
 
+## 2026-09-05 — v1.0.7 (update)
+
+### Fixed
+- **API key now actually stores** — the old field dropped input while hidden (first keystroke only revealed it), so profiles had no key and requests returned 401. It is now a proper masked •••••• field that always captures input; Show/Hide only changes visibility. While editing an existing profile the app shows a "key already saved… type to replace" hint.
+- **Profile editor spacing fixed** — gap is now below the API key field (larger, scrollable) rather than above the port.
+- **No text overlap anywhere**: status banners, About buttons, Activity & Usage rows, profile list rows and document cards all use single/max-line ellipsis and proper weights.
+- **Models section added to each profile** — the editor lists models from the Models tab (active one starred); tapping one sets the profile's Model ID. At request time the profile uses its own Model ID if filled, otherwise it falls back to the active model from the Models tab.
+- Profile list rows now show "key saved / no key" and "session ok" status per profile.
+- v1.0.6 APK backed up to Backup/.
+
 ## 2026-09-05 — v1.0.6 (update)
 
 ### Changed

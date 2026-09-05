@@ -136,21 +136,20 @@ fun AboutScreen(vm: com.jnetai.assistant.ui.screens.AppViewModel, onBack: () -> 
 
 @Composable
 private fun ActionBtn(label: String, onclick: () -> Unit, icon: androidx.compose.ui.graphics.vector.ImageVector? = null, modifier: Modifier = Modifier) {
-    Row(
+    Text(
+        label,
         modifier
             .clip(RoundedCornerShape(10.dp))
             .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f))
             .clickable(onClick = onclick)
-            .padding(vertical = 12.dp),
-        horizontalArrangement = Arrangement.Center,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        if (icon != null) {
-            Icon(icon, null, tint = NeonCyan, modifier = Modifier.size(16.dp))
-            Spacer(Modifier.size(6.dp))
-        }
-        Text(label, color = NeonCyan, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-    }
+            .padding(horizontal = 6.dp, vertical = 12.dp),
+        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+        color = NeonCyan,
+        fontSize = 13.sp,
+        fontWeight = FontWeight.SemiBold,
+        maxLines = 1,
+        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+    )
 }
 
 private fun openUrl(context: Context, url: String) {

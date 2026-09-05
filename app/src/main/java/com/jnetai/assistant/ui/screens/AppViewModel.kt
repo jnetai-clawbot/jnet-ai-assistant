@@ -176,6 +176,24 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private suspend fun profileName(id: Long): String =
         _profiles.value.find { it.id == id }?.name ?: "?"
 
+    /** Active local model name from the Models tab (empty if none active). */
+    suspend fun activeLocalModelName(): String =
+        withContext(Dispatchers.IO) {
+            db.modelDao().getAllOnce().find { it.active }?.name ?: ""
+        }
+
+    /**
+     * Uses the profile's own Model ID when it is filled in; otherwise falls back
+     * to the active local model configured in the Models tab.
+     */
+    suspend fun resolveProfileModel(p: ConnectionProfile): ConnectionProfile =
+        if (p.model.isBlank()) {
+            val local = activeLocalModelName()
+            if (local.isNotBlank()) p.copy(model = local) else p
+        } else {
+            p
+        }
+
     // ---------- PROFILE CRUD ----------
     fun saveProfile(p: ConnectionProfile, rawApiKey: String? = null) {
         viewModelScope.launch {
@@ -259,9 +277,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun sendMessage(text: String) {
         if (text.isBlank() || chatBusy.value) return
         viewModelScope.launch {
-            val profile = selectedProfile() ?: run { setStatus("No profile selected", com.jnetai.assistant.ui.components.Tone.ERROR); return@launch }
+            val profile0 = selectedProfile() ?: run { setStatus("No profile selected", com.jnetai.assistant.ui.components.Tone.ERROR); return@launch }
+            // Use the profile's Model ID when set; otherwise fall back to the active local model from the Models tab.
+            val profile = resolveProfileModel(profile0)
             if (profile.model.isBlank()) {
-                setStatus("Select a model for this profile", com.jnetai.assistant.ui.components.Tone.ERROR); return@launch
+                setStatus("Set a model for this profile (or activate one in the Models tab)", com.jnetai.assistant.ui.components.Tone.ERROR); return@launch
             }
 
             chatBusy.value = true
@@ -481,24 +501,27 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun onVoiceMicPress() {
         ensureTts()
-        val profile = selectedProfile() ?: run { setStatus("Select a profile for voice mode", com.jnetai.assistant.ui.components.Tone.ERROR); return }
         if (voice.state.value == com.jnetai.assistant.voice.VoiceState.LISTENING) { voice.stopListening(); return }
-        voice.wire(
-            conversation = { transcript ->
-                // build conversation for voice: full history + system
-                val cid = _activeConversationId.value
-                val messages = buildList {
-                    if (profile.systemPrompt.isNotBlank()) add(ChatMessageInput("system", profile.systemPrompt))
-                    if (cid != 0L) {
-                        chatRepo.historyFor(cid).takeLast(settings.getInt("profile.max_history", profile.maxHistory)).forEach { m -> add(ChatMessageInput(m.role, m.content)) }
+        viewModelScope.launch {
+            val profile0 = selectedProfile() ?: run { setStatus("Select a profile for voice mode", com.jnetai.assistant.ui.components.Tone.ERROR); return@launch }
+            val profile = resolveProfileModel(profile0)
+            voice.wire(
+                conversation = { transcript ->
+                    // build conversation for voice: full history + system
+                    val cid = _activeConversationId.value
+                    val messages = buildList {
+                        if (profile.systemPrompt.isNotBlank()) add(ChatMessageInput("system", profile.systemPrompt))
+                        if (cid != 0L) {
+                            chatRepo.historyFor(cid).takeLast(settings.getInt("profile.max_history", profile.maxHistory)).forEach { m -> add(ChatMessageInput(m.role, m.content)) }
+                        }
+                        add(ChatMessageInput("user", transcript))
                     }
-                    add(ChatMessageInput("user", transcript))
-                }
-                messages
-            },
-            provider = { graph.providerFactory.create(profile) { secrets.get(profile.apiKeyRef) } }
-        )
-        voice.startListening()
+                    messages
+                },
+                provider = { graph.providerFactory.create(profile) { secrets.get(profile.apiKeyRef) } }
+            )
+            voice.startListening()
+        }
     }
 
     fun onVoiceInterrupt() {
@@ -508,7 +531,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     // ---------- AGENT ----------
     fun runAgent(prompt: String, onDone: (String) -> Unit) {
         viewModelScope.launch {
-            val profile = selectedProfile() ?: run { setStatus("Select a profile", com.jnetai.assistant.ui.components.Tone.ERROR); return@launch }
+            val profile0 = selectedProfile() ?: run { setStatus("Select a profile", com.jnetai.assistant.ui.components.Tone.ERROR); return@launch }
+            val profile = resolveProfileModel(profile0)
             usage.logActivity("agent", "Agent: $prompt")
             // construct tool list + system prompt, call provider streaming, if tools requested execute them with permissions
             val registry = com.jnetai.assistant.agent.ToolRegistry(

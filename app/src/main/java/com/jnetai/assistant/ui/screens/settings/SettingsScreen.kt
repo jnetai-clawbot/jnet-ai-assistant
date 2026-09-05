@@ -133,14 +133,20 @@ private fun ProfileRow(p: ConnectionProfile, onEdit: () -> Unit, onTest: () -> U
     GlowCard(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text(p.name, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
+                Text(p.name, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                 Text(
                     "${p.providerType.display} · ${if (p.port > 0) "${p.endpoint}:${p.port}" else p.endpoint} · ${if (p.model.isNotBlank()) p.model else "no model"}",
-                    fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
+                    fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                 )
                 Text(
-                    if (p.enabled) "enabled" else "disabled",
-                    fontSize = 10.sp, color = if (p.enabled) NeonCyan else NeonPink
+                    buildString {
+                        append(if (p.enabled) "enabled" else "disabled")
+                        append(if (p.apiKeyRef.isNotEmpty()) " · key saved" else " · no key")
+                        append(if (p.opencodeSession.isNotBlank()) " · session ok" else " · no session")
+                    },
+                    fontSize = 10.sp, color = if (p.enabled) NeonCyan else NeonPink, maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                 )
             }
             IconButton(onClick = onTest) { Icon(Icons.Default.Build, "Test", tint = NeonCyan, modifier = Modifier.size(18.dp)) }
@@ -161,8 +167,8 @@ private fun SettingsRow(title: String, subtitle: String, onClick: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(Modifier.weight(1f)) {
-            Text(title, fontSize = 15.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurface)
-            Text(subtitle, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(title, fontSize = 15.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+            Text(subtitle, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
         }
         Icon(Icons.Default.Edit, null, tint = NeonPurple, modifier = Modifier.size(18.dp))
     }
@@ -255,15 +261,17 @@ fun ProfileEditor(
         EditorField("Endpoint (e.g. https://host or http://192.168.1.50)", endpoint, onChange = { endpoint = it })
         Spacer(Modifier.height(8.dp))
         EditorField("Port (optional, e.g. 11434)", port, numeric = true, onChange = { port = it })
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(8.dp))
 
-        // API key directly under the port, with room below it.
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            EditorFieldWeighted("API key (stored encrypted)", if (showKey) apiKey else "•••••••••••••••••", { if (!showKey) showKey = true else apiKey = it }, Modifier.weight(1f))
-            Spacer(Modifier.width(4.dp))
-            Text(if (showKey) "Hide" else "Show", Modifier.clickable { showKey = !showKey }, color = NeonCyan, fontSize = 12.sp)
-        }
-        Spacer(Modifier.height(12.dp))
+        // API key directly under the port — always captures input, masked with ••••••
+        ApiKeyField(
+            value = apiKey,
+            onChange = { apiKey = it },
+            show = showKey,
+            onToggleShow = { showKey = !showKey },
+            hasStored = profile.apiKeyRef.isNotEmpty() && apiKey.isBlank()
+        )
+        Spacer(Modifier.height(20.dp))
 
         Row(verticalAlignment = Alignment.CenterVertically) {
             Checkbox(checked = tls, onCheckedChange = { tls = it })
@@ -274,7 +282,38 @@ fun ProfileEditor(
         }
         Spacer(Modifier.height(8.dp))
 
-        EditorField("Model ID (e.g. deepseek-v4-flash, llama3.1)", model, onChange = { model = it })
+        EditorField("Model ID (auto from Models tab if left empty)", model, onChange = { model = it })
+        Spacer(Modifier.height(8.dp))
+
+        // Local models from the Models tab — tap one to use it with this profile.
+        val appContextForModels = androidx.compose.ui.platform.LocalContext.current.applicationContext
+        val localModels = androidx.compose.runtime.produceState(initialValue = emptyList<com.jnetai.assistant.data.model.LocalModel>()) {
+            value = com.jnetai.assistant.data.db.AppDatabase.get(appContextForModels).modelDao().getAllOnce()
+        }.value
+        SectionHeader("Models tab (used when Model ID above is empty)")
+        if (localModels.isEmpty()) {
+            Text("No local models imported yet — add them in the Models tab.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        } else {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                localModels.take(6).forEach { m ->
+                    val isActive = m.active
+                    Text(
+                        m.name + if (isActive) " ★" else "",
+                        Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(if (isActive) NeonCyan.copy(alpha = 0.22f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
+                            .clickable { model = m.name }
+                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                        color = if (isActive) NeonCyan else MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 11.sp, maxLines = 1
+                    )
+                }
+            }
+            Text(
+                "This profile uses its Model ID above; if it is empty it falls back to the active model from the Models tab.",
+                fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
         Spacer(Modifier.height(8.dp))
 
         // OpenCode session id — required by OpenCode as x-opencode-session (auto-generated).
@@ -399,5 +438,53 @@ private fun EditorFieldWeighted(label: String, value: String, onChange: (String)
                 unfocusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent
             )
         )
+    }
+}
+
+/** Masked API-key field — always captures input; Show/Hide only changes visibility. */
+@Composable
+private fun ApiKeyField(
+    value: String,
+    onChange: (String) -> Unit,
+    show: Boolean,
+    onToggleShow: () -> Unit,
+    hasStored: Boolean
+) {
+    Column(Modifier.fillMaxWidth()) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("API key (stored encrypted)", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+            Text(
+                if (show) "Hide" else "Show",
+                Modifier.clickable { onToggleShow() }.padding(horizontal = 6.dp, vertical = 4.dp),
+                color = NeonCyan, fontSize = 12.sp
+            )
+        }
+        TextField(
+            value = value,
+            onValueChange = onChange,
+            singleLine = true,
+            visualTransformation = if (show) androidx.compose.ui.text.input.VisualTransformation.None else androidx.compose.ui.text.input.PasswordVisualTransformation(),
+            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Password),
+            placeholder = {
+                Text(
+                    if (hasStored) "••••••••••••••••• (a key is saved for this profile)" else "Enter API key",
+                    fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            },
+            shape = RoundedCornerShape(8.dp),
+            textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface),
+            colors = TextFieldDefaults.colors(
+                focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                focusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
+                unfocusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent
+            )
+        )
+        if (hasStored) {
+            Text(
+                "A key is already saved for this profile — type a new one to replace it.",
+                fontSize = 11.sp, color = NeonCyan
+            )
+        }
     }
 }

@@ -67,15 +67,29 @@ fun ActivityScreen(vm: AppViewModel) {
             }
             items(activity) { a ->
                 GlowCard(Modifier.fillMaxWidth(), glow = NeonPurple.copy(alpha = 0.3f)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(a.type.uppercase(), fontSize = 11.sp, color = NeonCyan, fontWeight = FontWeight.SemiBold)
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(a.type.uppercase(), fontSize = 11.sp, color = NeonCyan, fontWeight = FontWeight.SemiBold, maxLines = 1)
                         Text(
-                            " · ${SimpleDateFormat("MMM d HH:mm:ss", Locale.ROOT).format(Date(a.createdAt))}",
-                            fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
+                            "· ${SimpleDateFormat("MMM d HH:mm:ss", Locale.ROOT).format(Date(a.createdAt))}",
+                            fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                         )
                     }
-                    Text(a.summary, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.padding(top = 2.dp))
-                    if (a.detail.isNotBlank()) Text(a.detail, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        a.summary, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.padding(top = 2.dp), maxLines = 3,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                    )
+                    if (a.detail.isNotBlank()) {
+                        Text(
+                            a.detail, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                        )
+                    }
                 }
             }
             item {
@@ -96,27 +110,33 @@ fun ActivityScreen(vm: AppViewModel) {
 }
 
 @Composable
-private fun StatCard(modifier: Modifier, label: String, value: String, sub: String) {
-    GlowCard(modifier) {
-        Text(label, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(value, fontSize = 22.sp, fontWeight = FontWeight.Bold, color = NeonCyan)
-        Text(sub, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    }
-}
-
-@Composable
 private fun UsageRow(u: UsageRecord) {
     Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
-            Text(u.model.ifBlank { "unknown" }, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
+            Text(
+                u.model.ifBlank { "unknown" }, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface, maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+            )
             Text(
                 "${u.category} · ${SimpleDateFormat("HH:mm", Locale.ROOT).format(Date(u.createdAt))}",
-                fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
+                fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
             )
         }
         Text(
             "P ${u.promptTokens} + C ${u.completionTokens}",
-            fontSize = 12.sp, color = NeonCyan
+            fontSize = 12.sp, color = NeonCyan, maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
         )
+    }
+}
+
+@Composable
+private fun StatCard(modifier: Modifier, label: String, value: String, sub: String) {
+    GlowCard(modifier) {
+        Text(label, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+        Text(value, fontSize = 22.sp, fontWeight = FontWeight.Bold, color = NeonCyan, maxLines = 1)
+        Text(sub, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2)
     }
 }
