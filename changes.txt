@@ -1,5 +1,15 @@
 # J~Net AI Assistant — Changes
 
+## 2026-09-05 — v1.0.8 (update)
+
+### Changed
+- **Profile add/edit page redesigned:**
+  - Provider preset chips (OpenCode/OpenAI Compatible/Ollama/Local Device/…) are now one compact, horizontally scrolling line — the big empty gap under them is gone.
+  - **Endpoint URL, Port and API key are pulled straight up** under the chips; the free space now sits BELOW the API key field.
+  - The editor is now fully scrollable, so the API key and every field below it are always reachable.
+- **About page redesigned:** clean vertical padding between every heading and its text, no overlapping text anywhere, scrollable, buttons with single-line ellipsis.
+- v1.0.7 APK backed up to Backup/.
+
 ## 2026-09-05 — v1.0.7 (update)
 
 ### Fixed

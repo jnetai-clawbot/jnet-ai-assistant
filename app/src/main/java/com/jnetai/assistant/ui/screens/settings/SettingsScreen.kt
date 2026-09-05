@@ -2,6 +2,8 @@ package com.jnetai.assistant.ui.screens.settings
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -226,7 +228,8 @@ fun ProfileEditor(
     Column(
         Modifier
             .fillMaxSize()
-            .padding(12.dp)
+            .verticalScroll(androidx.compose.foundation.rememberScrollState())
+            .padding(horizontal = 12.dp)
             .background(MaterialTheme.colorScheme.background)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -240,8 +243,13 @@ fun ProfileEditor(
         EditorField("Profile name", name, onChange = { name = it })
         Spacer(Modifier.height(8.dp))
 
-        // Provider type selector
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        // Provider type selector — compact, horizontally scrollable, no tall gap.
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .horizontalScroll(androidx.compose.foundation.rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
             ProviderType.values().forEach { t ->
                 val active = t == type
                 Text(
@@ -250,17 +258,19 @@ fun ProfileEditor(
                         .clip(RoundedCornerShape(8.dp))
                         .background(if (active) NeonPurple.copy(alpha = 0.25f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
                         .clickable { type = t }
-                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
                     color = if (active) NeonPurple else MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontSize = 11.sp
+                    fontSize = 11.sp,
+                    maxLines = 1
                 )
             }
         }
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(10.dp))
 
-        EditorField("Endpoint (e.g. https://host or http://192.168.1.50)", endpoint, onChange = { endpoint = it })
+        // Endpoint, Port and API key straight up so the space is below the API key.
+        EditorField("Endpoint URL", endpoint, onChange = { endpoint = it })
         Spacer(Modifier.height(8.dp))
-        EditorField("Port (optional, e.g. 11434)", port, numeric = true, onChange = { port = it })
+        EditorField("Port", port, numeric = true, onChange = { port = it })
         Spacer(Modifier.height(8.dp))
 
         // API key directly under the port — always captures input, masked with ••••••

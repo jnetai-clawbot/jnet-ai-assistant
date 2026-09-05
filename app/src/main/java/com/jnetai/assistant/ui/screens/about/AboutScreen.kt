@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -53,7 +54,12 @@ fun AboutScreen(vm: com.jnetai.assistant.ui.screens.AppViewModel, onBack: () -> 
     var checkResult by remember { mutableStateOf("") }
     var checkTone by remember { mutableStateOf(Tone.INFO) }
 
-    Column(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
+    Column(
+        Modifier
+            .fillMaxSize()
+            .verticalScroll(androidx.compose.foundation.rememberScrollState())
+            .padding(horizontal = 12.dp)
+    ) {
         Spacer(Modifier.height(8.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("← back", Modifier.clickable { onBack() }, color = NeonCyan, fontSize = 14.sp)
@@ -61,17 +67,22 @@ fun AboutScreen(vm: com.jnetai.assistant.ui.screens.AppViewModel, onBack: () -> 
         }
         Spacer(Modifier.height(16.dp))
 
-        GlowCard(Modifier.fillMaxWidth(), glow = NeonPurple) {
+        // App / version card
+        Column(Modifier.fillMaxWidth()) {
             Text("J~Net AI Assistant", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = NeonCyan)
-            Text("Made by jnetai.com", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
-            Text("Version $versionName", fontSize = 13.sp, color = NeonPurple, modifier = Modifier.padding(top = 6.dp))
+            Spacer(Modifier.height(6.dp))
+            Text("Made by jnetai.com", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.height(4.dp))
+            Text("Version $versionName", fontSize = 13.sp, color = NeonPurple)
+            Spacer(Modifier.height(8.dp))
             Text(
                 "A private AI workstation for Android: chat, RAG, local models, voice assistant and controlled automation.",
-                fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp)
+                fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
-
         Spacer(Modifier.height(12.dp))
+
+        // Buttons
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             ActionBtn("Check for update", onclick = {
                 checking = true
@@ -87,41 +98,44 @@ fun AboutScreen(vm: com.jnetai.assistant.ui.screens.AppViewModel, onBack: () -> 
                     putExtra(Intent.EXTRA_TEXT, "J~Net AI Assistant — private AI workstation for Android. Download: $GITHUB_REPO")
                 }
                 context.startActivity(Intent.createChooser(share, "Share J~Net AI Assistant"))
-            }, modifier = Modifier.weight(1f), icon = Icons.Default.Share)
+            }, modifier = Modifier.weight(1f))
         }
 
+        Spacer(Modifier.height(12.dp))
+
         if (checking) {
-            Spacer(Modifier.height(10.dp))
             StatusBanner("Checking for updates…", Tone.INFO, Modifier.fillMaxWidth())
+            Spacer(Modifier.height(8.dp))
         }
         if (checkResult.isNotEmpty()) {
-            Spacer(Modifier.height(10.dp))
             StatusBanner(checkResult, checkTone, Modifier.fillMaxWidth())
+            Spacer(Modifier.height(8.dp))
             if (checkTone == Tone.SUCCESS && checkResult.contains("Update available")) {
                 Text(
                     "Download",
                     Modifier
-                        .padding(top = 8.dp)
                         .clip(RoundedCornerShape(8.dp))
                         .background(NeonCyan.copy(alpha = 0.25f))
                         .clickable { openUrl(context, GITHUB_REPO) }
                         .padding(horizontal = 16.dp, vertical = 10.dp),
                     color = NeonCyan, fontSize = 14.sp
                 )
+                Spacer(Modifier.height(8.dp))
             }
         }
 
-        Spacer(Modifier.height(12.dp))
-        GlowCard(Modifier.fillMaxWidth(), glow = NeonCyan) {
+        // Release card
+        Column(Modifier.fillMaxWidth()) {
             Text("Release", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(6.dp))
             Text(
                 "Releases are built with GitHub Actions and signed with a stable keystore so the app can update in place without uninstalling.",
-                fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp)
+                fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+            Spacer(Modifier.height(8.dp))
             Text(
                 "Open releases on GitHub",
                 Modifier
-                    .padding(top = 8.dp)
                     .clip(RoundedCornerShape(8.dp))
                     .background(NeonPurple.copy(alpha = 0.2f))
                     .clickable { openUrl(context, GITHUB_REPO + "/releases") }
@@ -129,13 +143,17 @@ fun AboutScreen(vm: com.jnetai.assistant.ui.screens.AppViewModel, onBack: () -> 
                 color = NeonPurple, fontSize = 13.sp
             )
         }
-
-        Spacer(Modifier.height(28.dp))
+        Spacer(Modifier.height(8.dp))
+        Text(
+            "Made by jnetai.com",
+            fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(Modifier.height(32.dp))
     }
 }
 
 @Composable
-private fun ActionBtn(label: String, onclick: () -> Unit, icon: androidx.compose.ui.graphics.vector.ImageVector? = null, modifier: Modifier = Modifier) {
+private fun ActionBtn(label: String, onclick: () -> Unit, modifier: Modifier = Modifier) {
     Text(
         label,
         modifier
