@@ -73,6 +73,12 @@ class ToolRegistry(
         AgentTool(
             "device_info", "Return basic device information (model, Android version, storage hint).",
             emptyList(), PermissionKind.DATA_QUERY, SafetyLevel.HARMLESS
+        ),
+        AgentTool(
+            "run_shell",
+            "Run a shell command on this device and return its real output. Only runs after the user grants permission for the exact command.",
+            listOf(ToolParam("command", "string", "exact shell command to execute, e.g. ls /storage/emulated/0/DCIM")),
+            PermissionKind.SHELL, SafetyLevel.DESTRUCTIVE
         )
     )
 
@@ -153,6 +159,19 @@ class ToolRegistry(
             "get_time" -> java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(java.util.Date())
             "device_info" -> {
                 "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}, Android ${android.os.Build.VERSION.RELEASE} (API ${android.os.Build.VERSION.SDK_INT})"
+            }
+            "run_shell" -> {
+                val cmd = (args["command"] as? String)?.trim() ?: throw AgentException.ToolFailed("command required")
+                if (cmd.isBlank()) throw AgentException.ToolFailed("command is blank")
+                // Only commands the user already granted forever run here silently;
+                // anything else must go through the per-command Allow once/forever UI.
+                if (permission.shellToolsEnabled() && permission.isShellForeverAllowed(cmd)) {
+                    ShellRunner.run(cmd)
+                } else {
+                    throw AgentException.PermissionDenied(
+                        "Shell command needs your approval — grant it in the agent dialog (Allow once / Allow forever). Command: $cmd"
+                    )
+                }
             }
             else -> throw AgentException.ToolFailed("Unknown tool '${toolName}'")
         }

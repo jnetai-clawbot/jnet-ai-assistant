@@ -17,11 +17,38 @@ class PermissionManager(private val context: Context) {
 
     private val prefs = context.getSharedPreferences("jnet_agent_perms", Context.MODE_PRIVATE)
 
+    // Per-command shell permissions: "allow forever" is a stored hash set. There
+    // is intentionally NO persisted "allow once" — once-only grants live only in
+    // memory for the current run and are never reused without asking again.
+    private val shellPrefs = context.getSharedPreferences("jnet_shell_perm", Context.MODE_PRIVATE)
+
     fun permitKind(kind: PermissionKind): Boolean = prefs.getBoolean("perm_${kind.name}", defaultFor(kind))
 
     fun setPermit(kind: PermissionKind, allowed: Boolean) {
         prefs.edit().putBoolean("perm_${kind.name}", allowed).apply()
     }
+
+    // ---- Shell command permissions ----
+
+    fun shellToolsEnabled(): Boolean = permitKind(PermissionKind.SHELL)
+
+    fun isShellForeverAllowed(command: String): Boolean =
+        shellPrefs.contains(hash(command.trim()))
+
+    fun allowShellForever(command: String) {
+        shellPrefs.edit().putBoolean(hash(command.trim()), true).apply()
+    }
+
+    fun revokeShellPermissions() {
+        shellPrefs.edit().clear().apply()
+    }
+
+    fun countShellForeverAllowed(): Int = shellPrefs.all.size
+
+    private fun hash(command: String): String =
+        java.security.MessageDigest.getInstance("SHA-256")
+            .digest(command.toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it) }
 
     fun trustLevel(): String =
         prefs.getString("trust_level", "ask") ?: "ask"

@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.0.15] - 2026-09-06
+
+### Added
+- **Agent executes real Android shell commands:** the model emits proposed commands in `<command>…</command>` tags; the app extracts, gates and runs each one via `sh -c` (app UID, 20s timeout) and appends the real output (exit code + stdout/stderr) to the response.
+- **Per-command permission dialog** showing the exact command with **Allow once**, **Allow forever** and **Deny** buttons. Auto-skips forever-granted commands and "trusted" trust level; disabled by the new **Shell** permission toggle / "disabled" trust level. "Revoke permanently-allowed shell command(s)" clears all forever-grants.
+- **Mic input in Agent mode:** transcribes into the prompt box alongside text input.
+- **Copy to clipboard** on every agent response (command + real output), and the result is long-press selectable.
+- New `run_shell` tool + error codes **E0703** (shell failed) and **E0704** (clipboard failed), logged with stack traces.
+
 ## [1.0.14] - 2026-09-06
 
 ### Fixed

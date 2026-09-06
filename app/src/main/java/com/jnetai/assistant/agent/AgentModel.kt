@@ -7,7 +7,7 @@ enum class SafetyLevel { HARMLESS, PRIVACY_SENSITIVE, DESTRUCTIVE }
 
 enum class PermissionKind {
     DOCUMENTS, MICROPHONE, NOTIFICATIONS, CLIPBOARD, ACCESSIBILITY,
-    NETWORK, FILES, DEVICE_ACTIONS, CALCULATION, DATA_QUERY, AI_ENDPOINT
+    NETWORK, FILES, DEVICE_ACTIONS, CALCULATION, DATA_QUERY, AI_ENDPOINT, SHELL
 }
 
 data class ToolParam(val name: String, val type: String, val description: String, val required: Boolean = true)

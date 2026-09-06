@@ -1,5 +1,17 @@
 # J~Net AI Assistant — Changes
 
+## 2026-09-06 — v1.0.15 (update)
+
+### Added
+- **Agent actually runs Android shell commands now.** Asking the agent "count all mp4 files in my DCIM folder" used to return only the command text. Now the model is told to emit the exact command inside `<command>…</command>` tags, and the app extracts every proposed command, runs it through a real Android shell (`sh -c`, as the app's own UID, 20s timeout), and appends the **actual command output** (exit code + stdout/stderr) to the answer. Commands can also be fenced in ```bash / ```shell / ```sh blocks.
+- **Permission dialog for every shell command:** before an unknown command runs the app shows the exact command it intends to execute with three buttons — **Allow once** (run it now, not remembered), **Allow forever** (run it and any identical future command without asking), and **Deny** (skip it). The dialog is skipped automatically for commands already granted forever and at trust level "trusted"; the "disabled" trust level and the new **Shell** permission toggle turn shell execution off entirely. A "Revoke N permanently-allowed shell command(s)" row lets you clear every forever-grant.
+- **Mic input in Agent mode:** a mic button beside the agent prompt transcribes speech straight into the prompt box (final transcript only), so agents can be driven by voice or text.
+- **Copy to clipboard:** every agent response card has a **Copy** button that puts the full result (including the shell command and its real output) on the clipboard; the text is also long-press selectable.
+- New `run_shell` agent tool and new error codes **E0703** (shell execution failed) and **E0704** (clipboard failed) — both logged with stack traces in Error logs.
+
+### Notes
+- On Android 10+ with scoped storage, raw shell access to shared folders reflects what the app itself can see (other apps' private media may be listed via MediaStore instead). We recommend the built-in MediaStore-aware approach if a count looks scoped. v1.0.14 APK backed up to Backup/.
+
 ## 2026-09-06 — v1.0.14 (update)
 
 ### Fixed

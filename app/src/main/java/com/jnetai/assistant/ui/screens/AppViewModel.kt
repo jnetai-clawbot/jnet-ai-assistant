@@ -24,6 +24,7 @@ import com.jnetai.assistant.data.model.IndexedDocument
 import com.jnetai.assistant.data.model.Message
 import com.jnetai.assistant.data.model.ProviderType
 import com.jnetai.assistant.util.Err
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -33,9 +34,13 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 /** Result of a lock-screen PIN attempt (kept for API compatibility). */
 data class LockDecision(val ok: Boolean, val mustChangePin: Boolean = false)
+
+/** User decision for a proposed agent shell command. */
+enum class ShellPermissionChoice { ALLOW_ONCE, ALLOW_FOREVER, DENY }
 
 /**
  * Root application ViewModel. Holds profile list, chat session state, RAG,
@@ -787,26 +792,244 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     // ---------- AGENT ----------
+
+    /**
+     * Command awaiting the user's Allow once / Allow forever / Deny decision.
+     * Set while a proposed shell command is waiting; resolved via
+     * [resolveShellPermission].
+     */
+    val pendingShellCommand = MutableStateFlow<String?>(null)
+
+    private var shellResume: ((ShellPermissionChoice) -> Unit)? = null
+
+    /** The UI calls this with the user's choice for the pending shell command. */
+    fun resolveShellPermission(choice: ShellPermissionChoice) {
+        if (shellResume != null) {
+            Err.i("Agent shell permission resolved: $choice")
+            shellResume?.invoke(choice)
+        }
+    }
+
+    /**
+     * Runs the agent for a prompt. The reply is returned via [onDone]. When the
+     * model proposes shell commands (inside `<command>…</command>` tags) they
+     * are extracted and EVERY command is gated: it only executes after the
+     * user approves (Allow once / Allow forever) or when it was already
+     * granted forever / trust level is 'trusted'. The real Android shell output
+     * (exit code + stdout/stderr) is appended to the returned text, so you see
+     * both the command AND its actual response.
+     */
     fun runAgent(prompt: String, onDone: (String) -> Unit) {
         viewModelScope.launch {
-            val profile0 = selectedProfile() ?: run { setStatus("Select a profile", com.jnetai.assistant.ui.components.Tone.ERROR); return@launch }
-            val profile = resolveProfileModel(profile0)
-            usage.logActivity("agent", "Agent: $prompt")
-            // construct tool list + system prompt, call provider streaming, if tools requested execute them with permissions
-            val registry = com.jnetai.assistant.agent.ToolRegistry(
-                getApplication(), permissions,
-                onToolExecuted = { a -> viewModelScope.launch { db.agentDao().insert(a) } },
-                rag = rag
-            )
-            val tools = registry.allTools().filter { t -> permissions.toolsEnabled() }
-            val messages = listOf(
-                ChatMessageInput("system", "You are J~Net AI Assistant's agent. To perform actions, call tools. Never claim an action succeeded unless a tool result confirms it. If you cannot do something, say so."),
-                ChatMessageInput("user", prompt)
-            )
-            val provider = graph.providerFactory.create(profile) { secrets.get(profile.apiKeyRef) }
-            val result = provider.chat(messages)
-            onDone(result.text)
+            try {
+                val profile0 = selectedProfile() ?: run {
+                    setStatus("Select a profile", com.jnetai.assistant.ui.components.Tone.ERROR)
+                    onDone("No profile selected — create one first in Settings.")
+                    return@launch
+                }
+                val profile = resolveProfileModel(profile0)
+                if (profile.model.isBlank()) {
+                    setStatus("Set a model for this profile (or activate one in Models)", com.jnetai.assistant.ui.components.Tone.ERROR)
+                    onDone("Set a model for this profile (or activate one in the Models tab).")
+                    return@launch
+                }
+                usage.logActivity("agent", "Agent: $prompt")
+
+                val messages = listOf(
+                    ChatMessageInput("system", AGENT_SYSTEM_PROMPT),
+                    ChatMessageInput("user", prompt)
+                )
+                val provider = graph.providerFactory.create(profile) { secrets.get(profile.apiKeyRef) }
+                val result = provider.chat(messages)
+                val reply = result.text
+
+                val builder = StringBuilder(reply)
+                val commands = extractShellCommands(reply)
+                if (commands.isNotEmpty()) {
+                    builder.append("\n\n—— Agent commands ——")
+                    commands.forEachIndexed { i, cmd ->
+                        builder.append("\n\n[$i + 1] Command: ").append(cmd).append('\n')
+                        runShellInto(builder, cmd)
+                    }
+                }
+                usage.logActivity("agent", "Agent result", "shellCommands=${commands.size}")
+                onDone(builder.toString())
+            } catch (t: kotlinx.coroutines.CancellationException) {
+                throw t
+            } catch (t: Throwable) {
+                Err.e(Err.API_STREAM_ERROR, "Agent run failed", t)
+                setStatus("Agent failed — see Error logs", com.jnetai.assistant.ui.components.Tone.ERROR)
+                onDone("Agent failed: ${t.message ?: t.javaClass.simpleName}. Details in Error logs.")
+            }
         }
+    }
+
+    /** Runs a shell command off the main thread (never blocks the UI). */
+    private suspend fun runShell(cmd: String): String =
+        withContext(Dispatchers.IO) {
+            com.jnetai.assistant.agent.ShellRunner.run(cmd)
+        }
+
+    /**
+     * Runs one proposed shell command (or reports why it was skipped) and
+     * appends its real Android shell output to [builder].
+     */
+    private suspend fun runShellInto(builder: StringBuilder, cmd: String) {
+        try {
+            if (permissions.trustLevel() == "disabled" || !permissions.shellToolsEnabled()) {
+                builder.append("Skipped — shell commands are turned off in the Agent permissions.")
+                return
+            }
+            if (permissions.trustLevel() == "trusted" || permissions.isShellForeverAllowed(cmd)) {
+                builder.append(runShell(cmd))
+                return
+            }
+
+            // Permission required: suspend until the user decides.
+            val choice = awaitShellPermission(cmd)
+            when (choice) {
+                ShellPermissionChoice.DENY ->
+                    builder.append("Skipped — you denied permission for this command.")
+                ShellPermissionChoice.ALLOW_FOREVER -> {
+                    permissions.allowShellForever(cmd)
+                    builder.append(runShell(cmd))
+                }
+                ShellPermissionChoice.ALLOW_ONCE ->
+                    builder.append(runShell(cmd))
+            }
+        } catch (t: kotlinx.coroutines.CancellationException) {
+            throw t
+        } catch (t: Throwable) {
+            Err.e(Err.SHELL_ERROR, "Shell command failed: $cmd", t)
+            builder.append("Error running command: ${t.message ?: t.javaClass.simpleName}")
+        }
+    }
+
+    /** Suspends the agent run until the UI resolves the permission (or 2 min elapse → denied). */
+    private suspend fun awaitShellPermission(cmd: String): ShellPermissionChoice =
+        withTimeoutOrNull(120_000) {
+            val deferred = CompletableDeferred<ShellPermissionChoice>()
+            shellResume = { c ->
+                if (shellResume != null) {
+                    shellResume = null
+                    pendingShellCommand.value = null
+                    deferred.complete(c)
+                }
+            }
+            pendingShellCommand.value = cmd
+            deferred.await()
+        } ?: ShellPermissionChoice.DENY.also {
+            pendingShellCommand.value = null
+            Err.w("Shell permission prompt timed out — treated as denied")
+        }
+
+    /**
+     * Pulls proposed shell commands out of the model's reply. Accepts
+     * `<command>…</command>` markers or fenced ```bash/```shell/```sh blocks.
+     * At most 8 commands are honoured per reply to prevent runaway loops.
+     */
+    private fun extractShellCommands(text: String): List<String> {
+        val xml = Regex("<command[^>]*>(.*?)</command>", RegexOption.DOT_MATCHES_ALL)
+            .findAll(text)
+            .map { it.groupValues[1].trim() }
+            .filter { it.isNotBlank() }
+            .toList()
+        if (xml.isNotEmpty()) return xml.take(8)
+        val fenced = Regex("`{3}(?:bash|shell|sh)?\\s*\\r?\\n(.*?)`{3}", RegexOption.DOT_MATCHES_ALL)
+            .findAll(text)
+            .map { it.groupValues[1].trim() }
+            .filter { it.isNotBlank() }
+            .toList()
+        if (fenced.isNotEmpty()) return fenced.take(8)
+        return emptyList()
+    }
+
+    // ---------- AGENT MIC (STT → agent prompt) ----------
+
+    /** Text of the Agent tab's prompt box (so mic + text share the same input). */
+    val agentInput = MutableStateFlow("")
+
+    val agentMicListening = MutableStateFlow(false)
+
+    private var agentMicSeq = 0L
+
+    /**
+     * Agent tab microphone: transcribes speech into the agent prompt box,
+     * ready to review and send. Mirrors the chat mic (final transcript only).
+     */
+    fun onAgentMicPress() {
+        if (agentMicListening.value) { stopAgentMic(); return }
+        agentMicListening.value = true
+        val seq = ++agentMicSeq
+        var accepted = false
+        setStatus("Listening — speak now", com.jnetai.assistant.ui.components.Tone.INFO)
+        try {
+            graph.stt.startListening(
+                onResult = onResult@{ result ->
+                    if (seq != agentMicSeq) return@onResult
+                    if (result.errorCode != null) {
+                        agentMicListening.value = false
+                        Err.e(result.errorCode, "Agent mic STT failed: ${result.errorMessage}")
+                        setStatus(result.errorMessage ?: "Speech recognition failed", com.jnetai.assistant.ui.components.Tone.ERROR)
+                    } else if (result.isFinal) {
+                        if (accepted) return@onResult
+                        accepted = true
+                        agentMicListening.value = false
+                        if (result.text.isNotBlank()) {
+                            agentInput.value = if (agentInput.value.isBlank()) result.text.trim()
+                            else agentInput.value.trimEnd() + " " + result.text.trim()
+                            setStatus("Transcribed — review and send", com.jnetai.assistant.ui.components.Tone.SUCCESS)
+                        } else {
+                            setStatus("No speech detected", com.jnetai.assistant.ui.components.Tone.INFO)
+                        }
+                    }
+                },
+                onState = { listening ->
+                    if (seq == agentMicSeq) agentMicListening.value = listening
+                    if (listening && seq == agentMicSeq) setStatus("Listening — speak now", com.jnetai.assistant.ui.components.Tone.INFO)
+                }
+            )
+        } catch (t: Throwable) {
+            Err.e(Err.STT_UNAVAILABLE, "Agent mic failed to start", t)
+            agentMicListening.value = false
+            setStatus("Could not start speech recognition", com.jnetai.assistant.ui.components.Tone.ERROR)
+        }
+    }
+
+    fun stopAgentMic() {
+        agentMicSeq++
+        runCatching { graph.stt.stopListening() }
+        agentMicListening.value = false
+        setStatus("Cancelled", com.jnetai.assistant.ui.components.Tone.INFO)
+    }
+
+    /** Copies arbitrary text (e.g. an agent shell response) to the clipboard. */
+    fun copyToClipboard(text: String) {
+        if (text.isBlank()) {
+            setStatus("Nothing to copy", com.jnetai.assistant.ui.components.Tone.INFO)
+            return
+        }
+        try {
+            val cm = getApplication<Application>().getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+            cm.setPrimaryClip(android.content.ClipData.newPlainText("jnetai-agent-result", text))
+            setStatus("Copied to clipboard", com.jnetai.assistant.ui.components.Tone.SUCCESS)
+        } catch (t: Throwable) {
+            Err.e(Err.CLIPBOARD_ERROR, "Clipboard write failed", t)
+            setStatus("Could not copy to clipboard — see Error logs", com.jnetai.assistant.ui.components.Tone.ERROR)
+        }
+    }
+
+    private companion object {
+        const val AGENT_SYSTEM_PROMPT =
+            "You are J~Net AI Assistant's local agent on an Android device. You can run real " +
+                "bash/shell commands on this device to inspect the filesystem, count files, list " +
+                "folders, check storage, etc.\n" +
+                "When a task requires running a command, output the EXACT shell command inside XML " +
+                "tags, e.g. <command>find /storage/emulated/0/DCIM -iname '*.mp4' | wc -l</command>, " +
+                "and add a short explanation around it. Do NOT pretend to run commands yourself and " +
+                "do NOT invent command output — the app executes your command and appends the real " +
+                "output to the answer. Prefer read-only commands (ls, find, wc, du, stat, cat). " +
+                "Never suggest destructive commands unless the user explicitly asks."
     }
 
     // ---------- ONBOARDING / LOCK ----------
