@@ -152,7 +152,7 @@ fun AgentsScreen(vm: AppViewModel) {
                 if (micListening) {
                     Text("●", Modifier.align(Alignment.Center), color = Color.White, fontSize = 18.sp)
                 } else {
-                    Icon(Icons.Default.Mic, "Voice input", Modifier.align(Alignment.Center), tint = NeonCyan, modifier = Modifier.size(20.dp))
+                    Icon(Icons.Default.Mic, "Voice input", Modifier.align(Alignment.Center), tint = NeonCyan)
                 }
             }
             Spacer(Modifier.width(8.dp))
@@ -221,12 +221,19 @@ fun AgentsScreen(vm: AppViewModel) {
                         fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Spacer(Modifier.height(8.dp))
-                    Text(
-                        cmd,
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 12.sp, color = NeonCyan,
-                        backgroundColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                    )
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                            .padding(8.dp)
+                    ) {
+                        Text(
+                            cmd,
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 12.sp, color = NeonCyan
+                        )
+                    }
                     Spacer(Modifier.height(8.dp))
                     Text(
                         "Allow once runs it now only. Allow forever runs it and any identical future command without asking again. Deny skips it.",
