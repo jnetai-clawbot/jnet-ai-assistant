@@ -1,5 +1,18 @@
 # J~Net AI Assistant — Changes
 
+## 2026-09-06 — v1.0.13 (update)
+
+### Added
+- **Upload Document button inside every collection (Issue 1):** each collection card on the Documents tab now has its own **Upload** button that opens the file picker and indexes the picked documents directly into THAT collection. The picker now accepts a much wider set of formats (any document); unsupported ones show a clear "file stays on your device" status instead of doing anything harmful.
+- **Save and Remove buttons on collections (Issue 2):** every collection card has a **Save** button (tap it to rename the collection, then "Save name" / "Cancel") and a **Remove** button (with a confirmation dialog) that removes the collection AND all of its documents from Docs / RAG / search. Each document inside a collection is still individually deletable.
+- **Removal never deletes your files:** removing a document or a whole collection only clears the local RAG index rows — the original files on /storage/emulated/0 remain completely untouched (search and RAG AI context are what get cleared).
+- **Unassigned documents section:** any document not inside a collection shows in its own "Unassigned documents" card so nothing is ever hidden from the search index.
+- New error codes: **E0505** (document picker failed to open) and **E0506** (collection create/rename/remove failed) — both fully logged in the in-app Error logs with stack traces.
+- v1.0.12 APK backed up to Backup/.
+
+### Fixed
+- **Pressing + no longer closes the app (Issue 1):** the document picker launch is now wrapped in a guarded handler — if the system picker fails to open or returns un-resolvable results, the app logs error code **E0505** and shows a friendly status instead of crashing. Picked URIs also get a persisted read permission so documents stay re-indexable, and a failure to persist that permission is logged rather than fatal. Embedding failures during indexing now fall back to keyword-only indexing (still fully searchable) and are logged as **E0503** instead of failing the import.
+
 ## 2026-09-06 — v1.0.12 (update)
 
 ### Fixed

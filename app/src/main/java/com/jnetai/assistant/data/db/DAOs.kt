@@ -43,6 +43,8 @@ interface CollectionDao {
     suspend fun getById(id: Long): DocCollection?
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(c: DocCollection): Long
+    @Query("UPDATE collections SET name = :name WHERE id = :id")
+    suspend fun rename(id: Long, name: String)
     @Query("DELETE FROM collections WHERE id = :id")
     suspend fun delete(id: Long)
 }
@@ -53,6 +55,8 @@ interface DocumentDao {
     fun getAll(): Flow<List<IndexedDocument>>
     @Query("SELECT * FROM documents WHERE collectionId = :cid ORDER BY createdAt DESC")
     fun getByCollection(cid: Long): Flow<List<IndexedDocument>>
+    @Query("SELECT * FROM documents WHERE collectionId = :cid ORDER BY createdAt DESC")
+    suspend fun getByCollectionOnce(cid: Long): List<IndexedDocument>
     @Query("SELECT * FROM documents WHERE id = :id")
     suspend fun getById(id: Long): IndexedDocument?
     @Query("SELECT * FROM documents WHERE fileHash = :hash LIMIT 1")
@@ -62,6 +66,8 @@ interface DocumentDao {
     @Update suspend fun update(d: IndexedDocument)
     @Query("DELETE FROM documents WHERE id = :id")
     suspend fun delete(id: Long)
+    @Query("DELETE FROM documents WHERE collectionId = :cid")
+    suspend fun deleteByCollection(cid: Long)
     @Query("DELETE FROM chunks WHERE documentId = :docId")
     suspend fun deleteChunks(docId: Long)
 }

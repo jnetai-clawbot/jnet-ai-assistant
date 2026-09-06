@@ -478,6 +478,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     // ---------- DOCUMENTS ----------
+
+    /**
+     * Imports a document into a run of picker-selected files. When a specific
+     * collection was chosen for the upload it is used; otherwise the document
+     * lands in the first selected / first existing / auto-created collection.
+     * Files are only indexed into the RAG database — the original file on the
+     * device is never modified or deleted.
+     */
     fun importDocument(uri: Uri) {
         viewModelScope.launch {
             try {
@@ -486,22 +494,53 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 val mime = getApplication<Application>().contentResolver.getType(uri) ?: ""
                 if (!com.jnetai.assistant.document.DocumentParser.isSupported(mime, name)) {
-                    setStatus("Unsupported document: $name", com.jnetai.assistant.ui.components.Tone.ERROR)
+                    setStatus("Unsupported document: $name — the file stays on your device", com.jnetai.assistant.ui.components.Tone.ERROR)
                     return@launch
                 }
                 val collId = _selectedCollections.value.firstOrNull()
                     ?: collections.value.firstOrNull()?.id
                     ?: rag.createCollection("Documents")
+                runCatching { importDocumentToCollection(uri, collId) }
+                    .onSuccess { refreshAll() }
+                    .onFailure { t ->
+                        Err.e(Err.RAG_INDEX_ERROR, "Import failed", t)
+                        setStatus("Failed to index document — see Error logs", com.jnetai.assistant.ui.components.Tone.ERROR)
+                    }
+            } catch (t: com.jnetai.assistant.document.UnsupportedDocumentException) {
+                setStatus(t.message ?: "Unsupported document", com.jnetai.assistant.ui.components.Tone.ERROR)
+            } catch (t: Throwable) {
+                Err.e(Err.RAG_INDEX_ERROR, "Import failed", t)
+                setStatus("Failed to index document — see Error logs", com.jnetai.assistant.ui.components.Tone.ERROR)
+            }
+        }
+    }
+
+    /** Indexes a picked document into an explicitly chosen collection. Never crashes on failure. */
+    fun importDocumentToCollection(uri: Uri, collectionId: Long) {
+        viewModelScope.launch {
+            try {
+                val (name, size) = withContext(Dispatchers.IO) {
+                    com.jnetai.assistant.document.DocumentParser.nameAndSize(getApplication(), uri)
+                }
+                val mime = getApplication<Application>().contentResolver.getType(uri) ?: ""
+                if (!com.jnetai.assistant.document.DocumentParser.isSupported(mime, name)) {
+                    setStatus("Unsupported document: $name — the file stays on your device", com.jnetai.assistant.ui.components.Tone.ERROR)
+                    return@launch
+                }
+                val collId = if (collectionId > 0L) collectionId
+                else _selectedCollections.value.firstOrNull()
+                    ?: collections.value.firstOrNull()?.id
+                    ?: rag.createCollection("Documents")
                 setStatus("Indexing $name…")
-                rag.indexDocument(uri, name, mime, collId) { progress -> /* progress handled via WorkManager path below */ }
+                rag.indexDocument(uri, name, mime, collId)
                 usage.logActivity("RAG", "Indexed $name")
                 setStatus("Indexed $name", com.jnetai.assistant.ui.components.Tone.SUCCESS)
                 refreshAll()
             } catch (t: com.jnetai.assistant.document.UnsupportedDocumentException) {
                 setStatus(t.message ?: "Unsupported document", com.jnetai.assistant.ui.components.Tone.ERROR)
             } catch (t: Throwable) {
-                Err.e(Err.RAG_INDEX_ERROR, "Import failed", t)
-                setStatus("Failed to index document", com.jnetai.assistant.ui.components.Tone.ERROR)
+                Err.e(Err.RAG_INDEX_ERROR, "Import to collection $collectionId failed", t)
+                setStatus("Failed to index document — see Error logs", com.jnetai.assistant.ui.components.Tone.ERROR)
             }
         }
     }
@@ -522,18 +561,64 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun deleteDocument(id: Long) {
         viewModelScope.launch {
-            rag.deleteDocument(id)
-            refreshAll()
-            setStatus("Document removed")
+            try {
+                rag.deleteDocument(id)
+                refreshAll()
+                setStatus("Document removed — the file stays on your device", com.jnetai.assistant.ui.components.Tone.INFO)
+            } catch (t: Throwable) {
+                Err.e(Err.RAG_INDEX_ERROR, "deleteDocument failed id=$id", t)
+                setStatus("Could not remove document — see Error logs", com.jnetai.assistant.ui.components.Tone.ERROR)
+            }
         }
     }
 
     fun createCollection(name: String) {
         viewModelScope.launch {
             if (name.isBlank()) return@launch
-            rag.createCollection(name)
-            refreshAll()
-            setStatus("Collection '$name' created", com.jnetai.assistant.ui.components.Tone.SUCCESS)
+            try {
+                rag.createCollection(name)
+                refreshAll()
+                setStatus("Collection '$name' created", com.jnetai.assistant.ui.components.Tone.SUCCESS)
+            } catch (t: Throwable) {
+                Err.e(Err.RAG_COLLECTION_ERROR, "createCollection failed", t)
+                setStatus("Could not create collection — see Error logs", com.jnetai.assistant.ui.components.Tone.ERROR)
+            }
+        }
+    }
+
+    /** Renames/saves a collection's name. */
+    fun saveCollectionName(id: Long, name: String) {
+        viewModelScope.launch {
+            if (name.isBlank()) { setStatus("Collection name cannot be blank", com.jnetai.assistant.ui.components.Tone.ERROR); return@launch }
+            try {
+                rag.renameCollection(id, name)
+                refreshAll()
+                setStatus("Collection renamed to '$name'", com.jnetai.assistant.ui.components.Tone.SUCCESS)
+            } catch (t: Throwable) {
+                Err.e(Err.RAG_COLLECTION_ERROR, "saveCollectionName failed id=$id", t)
+                setStatus("Could not rename collection — see Error logs", com.jnetai.assistant.ui.components.Tone.ERROR)
+            }
+        }
+    }
+
+    /**
+     * Removes a collection and every document inside it from the Docs / RAG /
+     * search scope. The files themselves remain on the device untouched (only
+     * the local index is cleared). Also unsets it from the RAG scope filter.
+     */
+    fun deleteCollection(id: Long) {
+        viewModelScope.launch {
+            try {
+                rag.deleteCollection(id)
+                val sel = _selectedCollections.value.toMutableSet()
+                sel.remove(id)
+                _selectedCollections.value = sel
+                refreshAll()
+                setStatus("Collection removed — files stay on your device", com.jnetai.assistant.ui.components.Tone.INFO)
+            } catch (t: Throwable) {
+                Err.e(Err.RAG_COLLECTION_ERROR, "deleteCollection failed id=$id", t)
+                setStatus("Could not remove collection — see Error logs", com.jnetai.assistant.ui.components.Tone.ERROR)
+            }
         }
     }
 

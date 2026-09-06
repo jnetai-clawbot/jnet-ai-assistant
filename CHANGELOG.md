@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.0.13] - 2026-09-06
+
+### Added
+- **Upload Document button inside every collection:** each collection card on the Documents tab has its own Upload button that picks documents (any format) and indexes them directly into that collection.
+- **Save and Remove buttons per collection:** Save renames a collection; Remove (with confirmation) deletes the collection and all its documents from Docs / RAG / search.
+- **Individual document removal** inside every collection, plus an "Unassigned documents" card for anything not in a collection.
+- New error codes E0505 (picker open failure) and E0506 (collection operation failure), both recorded in Error logs.
+
+### Fixed
+- **Pressing + no longer closes the app:** the file picker launch is guarded — any failure is logged (E0505) and surfaced as a status instead of crashing.
+- Embedding failures during indexing now fall back to keyword-only indexing (E0503, still searchable) instead of failing the import.
+- Picked URIs persist their read permission so documents stay re-indexable later.
+- Removing documents/collections only clears the local RAG index — files on the device are never deleted.
+
 ## [1.0.12] - 2026-09-06
 
 ### Fixed

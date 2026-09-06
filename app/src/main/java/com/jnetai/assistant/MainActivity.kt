@@ -38,6 +38,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -111,10 +112,32 @@ private fun AppRoot(
 
     var currentDest by remember { mutableStateOf(Dest.Chat.route) }
 
+    // Collection that picker-selected documents should be indexed into
+    // (0 = automatic: first selected / first existing / auto-created "Documents").
+    // rememberSaveable so the target survives rotation/activity recreation while
+    // the system file picker is open.
+    var docsUploadTarget by rememberSaveable { mutableStateOf(0L) }
+
     val pickDocs = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        // Capture the target before we reset it so every file in this batch
+        // lands in the same collection.
+        val target = docsUploadTarget
+        docsUploadTarget = 0L
         uris.forEach { uri ->
-            vm.importDocument(uri)
+            // Persist read access so the document remains re-indexable later.
+            runCatching { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+                .onFailure { t -> com.jnetai.assistant.util.Err.e(com.jnetai.assistant.util.Err.DOC_PICKER_ERROR, "takePersistableUriPermission failed for $uri", t) }
+            if (target != 0L) vm.importDocumentToCollection(uri, target) else vm.importDocument(uri)
         }
+    }
+    // The picker must never be able to close the app: any launch failure is
+    // logged (E0505) and surfaced as a friendly status instead of a crash.
+    val launchDocsPicker: () -> Unit = {
+        runCatching { pickDocs.launch(PICK_MIME_TYPES) }
+            .onFailure { t ->
+                com.jnetai.assistant.util.Err.e(com.jnetai.assistant.util.Err.DOC_PICKER_ERROR, "Document picker failed to open", t)
+                vm.setStatus("Could not open the file picker — see Error logs", com.jnetai.assistant.ui.components.Tone.ERROR)
+            }
     }
     val pickModel = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let {
@@ -158,7 +181,7 @@ private fun AppRoot(
                     ChatScreen(
                         vm,
                         onViewConversations = { nav.navigate("history") },
-                        onPickAttachments = { pickDocs.launch(PICK_MIME_TYPES) }
+                        onPickAttachments = { launchDocsPicker() }
                     )
                 }
                 composable("history") {
@@ -176,7 +199,11 @@ private fun AppRoot(
                     )
                 }
                 composable(Dest.Documents.route) {
-                    DocumentsScreen(vm, onPickFiles = { pickDocs.launch(PICK_MIME_TYPES) }, onPickFolder = {})
+                    DocumentsScreen(
+                        vm = vm,
+                        onUpload = { cid -> docsUploadTarget = cid; launchDocsPicker() },
+                        onFastPick = { docsUploadTarget = 0L; launchDocsPicker() }
+                    )
                 }
                 composable(Dest.Models.route) { ModelsScreen(vm, onPickModel = { pickModel.launch(arrayOf("application/octet-stream", "application/gguf", "*/*")) }) }
                 composable(Dest.Agents.route) { AgentsScreen(vm) }
@@ -208,7 +235,9 @@ private val PICK_MIME_TYPES = arrayOf(
     "application/pdf", "text/*", "application/msword",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     "application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    "text/markdown", "application/json", "text/csv", "text/html", "text/xml", "audio/*"
+    "text/markdown", "application/json", "text/csv", "text/html", "text/xml",
+    "audio/*", "application/octet-stream", "application/zip", "application/gzip",
+    "video/*", "image/*"
 )
 
 @Composable

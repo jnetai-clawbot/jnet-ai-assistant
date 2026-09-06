@@ -34,6 +34,44 @@ class RagEngine(
 
     suspend fun collections(): Flow<List<DocCollection>> = db.collectionDao().getAll()
 
+    /** Renames a collection. Blank names are rejected instead of clobbering the row. */
+    suspend fun renameCollection(id: Long, name: String) {
+        val clean = name.trim()
+        if (clean.isEmpty()) {
+            Err.w("Rename collection $id rejected: blank name")
+            return
+        }
+        try {
+            db.collectionDao().rename(id, clean)
+            Err.i("Renamed collection $id -> '$clean'")
+        } catch (t: Throwable) {
+            Err.e(Err.RAG_COLLECTION_ERROR, "renameCollection failed for id=$id", t)
+            throw t
+        }
+    }
+
+    /**
+     * Removes a collection and ALL of its documents + chunks from the RAG
+     * index. The original files on the user's device are NEVER touched — only
+     * the local database rows (search + RAG context) are cleared.
+     */
+    suspend fun deleteCollection(id: Long) {
+        withContext(Dispatchers.IO) {
+            try {
+                val docs = db.documentDao().getByCollectionOnce(id)
+                docs.forEach { d ->
+                    db.chunkDao().deleteByDocument(d.id)
+                    db.documentDao().delete(d.id)
+                }
+                db.collectionDao().delete(id)
+                Err.i("Deleted collection $id with ${docs.size} document(s) from RAG (files on device untouched)")
+            } catch (t: Throwable) {
+                Err.e(Err.RAG_COLLECTION_ERROR, "deleteCollection failed for id=$id", t)
+                throw t
+            }
+        }
+    }
+
     suspend fun indexDocument(uri: Uri, name: String, mime: String, collectionId: Long, onProgress: (Float) -> Unit = {}) {
         withContext(Dispatchers.IO) {
             Err.i("Indexing $name (mime=$mime) into collection $collectionId")
@@ -70,7 +108,15 @@ class RagEngine(
                 if (chunks.isEmpty()) throw UnsupportedDocumentException("No indexable chunks produced")
 
                 onProgress(0.5f)
-                val vectors = embeddingProvider(chunks.map { it.text })
+                val vectors = try {
+                    embeddingProvider(chunks.map { it.text })
+                } catch (t: Throwable) {
+                    // A remote-embedding blip must never kill the import — index
+                    // keyword-only so the document is still searchable. The failure
+                    // is logged for diagnostics.
+                    Err.e(Err.RAG_EMBED_ERROR, "Embedding failed for $name; indexing keyword-only", t)
+                    emptyList()
+                }
                 onProgress(0.8f)
 
                 if (vectors.isEmpty()) {
