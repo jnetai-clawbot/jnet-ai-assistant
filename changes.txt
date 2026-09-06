@@ -1,5 +1,13 @@
 # J~Net AI Assistant — Changes
 
+## 2026-09-06 — v1.0.14 (update)
+
+### Fixed
+- **Upload (in a collection) now opens the Android file picker (Issue 1):** the picker silently failed to open because the Compose `ActivityResultRegistry` assigns dynamically counted request codes that grew past the 16-bit limit over the app's lifetime — `startActivityForResult` then threw `IllegalArgumentException: Can only use lower 16 bits for requestCode` (logged as **E0505**). The fix replaces the registry-based launcher with the classic `startActivityForResult` using a FIXED low request code (7001), handled in `MainActivity.onActivityResult`. A fixed code can never overflow, so the picker reliably opens every time.
+- **The same overflow applied to every other file picker** (Models → pick model, Settings → Export backup / Import backup, History → Export). All of them are converted to fixed low request codes (7001–7005) so none of them can ever hit this crash either. Every launch is still guarded: a failure logs **E0505** and shows a friendly status instead of closing the app.
+- Picked document URIs still get a persisted read permission so they stay re-indexable later; the whole result handler is try/catch-free and can never throw.
+- v1.0.13 APK backed up to Backup/.
+
 ## 2026-09-06 — v1.0.13 (update)
 
 ### Added

@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.0.14] - 2026-09-06
+
+### Fixed
+- **Upload (in a collection) now opens the Android file picker.** The Compose ActivityResultRegistry's dynamically counted request codes grew past the 16-bit limit over the app's lifetime, making `startActivityForResult` throw "Can only use lower 16 bits for requestCode" (E0505) before the picker opened. All file pickers (documents upload, model import, backup export/import, history export) now use the classic `startActivityForResult` path with fixed low request codes (7001–7005) that can never overflow — handled in `MainActivity.onActivityResult`. Every launch remains guarded, logging E0505 + a friendly status instead of closing the app.
+
 ## [1.0.13] - 2026-09-06
 
 ### Added
