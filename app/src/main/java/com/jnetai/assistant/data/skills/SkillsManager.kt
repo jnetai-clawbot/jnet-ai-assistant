@@ -17,11 +17,11 @@ data class SkillInfo(
 
 /**
  * Local skills store. Skills are Markdown-format instruction files stored in
- * the app's private files dir (`filesDir/skills/*.md`). They can be uploaded
- * from a file, created from pasted text, enabled/disabled and removed. Enabled
- * skills are injected as a system message into EVERY mode (chat, RAG, hybrid,
- * agent and voice). The UI state (enabled flag, timestamp) lives in a private
- * SharedPreferences file keyed by skill name.
+ * the app's private files dir (filesDir/skills, one .md file per skill). They
+ * can be uploaded from a file, created from pasted text, enabled/disabled and
+ * removed. Enabled skills are injected as a system message into EVERY mode
+ * (chat, RAG, hybrid, agent and voice). The UI state (enabled flag, timestamp)
+ * lives in a private SharedPreferences file keyed by skill name.
  */
 class SkillsManager(private val context: Context) {
 
