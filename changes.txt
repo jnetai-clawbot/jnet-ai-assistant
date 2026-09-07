@@ -1,5 +1,19 @@
 # J~Net AI Assistant — Changes
 
+## 2026-09-06 — v1.0.16 (update)
+
+### Added
+- **Global internet access (free, API-less web search) in every chat mode.** The app now queries DuckDuckGo's public HTML search (no API key, no account) with an Instant Answer JSON fallback, and injects the fresh results (title / link / snippet) into the model context. This works in Normal, RAG, Hybrid, Agent and Voice modes — every mode gets real, current web information with the links cited.
+- **Settings → Enable Internet Search toggle (ON by default).** Turning it off stops internet searches everywhere (chat, RAG, agent/automation tool calls and the voice assistant). Search runs off the main thread with a short timeout; a search/blip or no-connection never blocks or fails a chat — it just sends without web context (logged as a warning).
+- **Skills section in Settings.** Skills are Markdown instruction files the AI follows in every mode. New UI supports:
+  - **Upload skill** — pick any text/markdown file (SAF file picker) to upload it;
+  - **Paste-in skill** — name + Markdown instructions saved directly;
+  - **Enable / disable** each skill with a switch (disabled skills are not injected);
+  - **Remove** any uploaded skill with the delete button.
+  Enabled skills are injected as a system message into every conversation (chat, RAG, hybrid, agent, voice). Stored in the app's private files dir — skills never leave the device.
+- New error codes **E0106** (internet search failure) and **E0902** (skills storage failure), logged with stack traces in Error logs. New fixed request code 7006 for the skill upload picker.
+- v1.0.15 APK backed up to Backup/.
+
 ## 2026-09-06 — v1.0.15 (update)
 
 ### Added

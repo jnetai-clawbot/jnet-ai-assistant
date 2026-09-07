@@ -26,6 +26,7 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
@@ -64,14 +65,21 @@ fun SettingsScreen(
     onVoiceSettings: () -> Unit,
     onErrorLogs: () -> Unit = {},
     onOpenHistory: () -> Unit = {},
-    onExportHistory: () -> Unit = {}
+    onExportHistory: () -> Unit = {},
+    onPickSkill: () -> Unit = {}
 ) {
     val profiles by vm.profiles.collectAsState()
     val status by vm.statusMessage.collectAsState()
     val testResult by vm.testResult.collectAsState()
+    val internetSearch by vm.internetSearchEnabled.collectAsState()
+    val skills by vm.skillsList.collectAsState()
 
     var editing by remember { mutableStateOf<ConnectionProfile?>(null) }
     var showClearConfirm by remember { mutableStateOf(false) }
+    var newSkillName by remember { mutableStateOf("") }
+    var newSkillContent by remember { mutableStateOf("") }
+
+    androidx.compose.runtime.LaunchedEffect(Unit) { vm.refreshSkills() }
 
     Column(
         Modifier
@@ -116,6 +124,20 @@ fun SettingsScreen(
 
         Spacer(Modifier.height(14.dp))
         SectionHeader("General")
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(10.dp))
+                .clickable { vm.setInternetSearchEnabled(!internetSearch) }
+                .padding(vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("Enable Internet Search", fontSize = 15.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                Text("Free web search (no API key) used by chat, RAG, agent and voice modes. ON by default.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+            }
+            Switch(checked = internetSearch, onCheckedChange = { vm.setInternetSearchEnabled(it) })
+        }
         SettingsRow("Security", "App lock · biometric · encryption", onSecuritySettings)
         SettingsRow("Voice & Speech", "STT / TTS providers & settings", onVoiceSettings)
         SettingsRow("History", "Past conversations across all modes · open / export / clear", onOpenHistory)
@@ -125,6 +147,100 @@ fun SettingsScreen(
         SettingsRow("Error logs", "Diagnostics, error codes — copy to clipboard & clear", onErrorLogs)
         SettingsRow("Export backup", "Encrypted export of settings, profiles, chat", onExport)
         SettingsRow("Import backup", "Restore from an encrypted backup", onImport)
+
+        Spacer(Modifier.height(14.dp))
+        SectionHeader("Skills")
+        Text(
+            "Skills are instruction files the AI follows in every mode (chat, RAG, agent, voice). Upload one, paste one, or enable/disable/remove any you have.",
+            fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(Modifier.height(8.dp))
+        Text(
+            "Upload skill",
+            Modifier
+                .clip(RoundedCornerShape(10.dp))
+                .background(NeonCyan.copy(alpha = 0.18f))
+                .clickable(onClick = onPickSkill)
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+            color = NeonCyan, fontSize = 14.sp, fontWeight = FontWeight.SemiBold
+        )
+
+        TextField(
+            value = newSkillName,
+            onValueChange = { newSkillName = it },
+            modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+            placeholder = { Text("Skill name (e.g. Coding Style)", fontSize = 13.sp) },
+            singleLine = true,
+            shape = RoundedCornerShape(8.dp),
+            textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface),
+            colors = TextFieldDefaults.colors(
+                focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                focusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
+                unfocusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent
+            )
+        )
+        TextField(
+            value = newSkillContent,
+            onValueChange = { newSkillContent = it },
+            modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+            placeholder = { Text("Skill instructions (Markdown)", fontSize = 13.sp) },
+            minLines = 2,
+            maxLines = 4,
+            shape = RoundedCornerShape(8.dp),
+            textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface),
+            colors = TextFieldDefaults.colors(
+                focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                focusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
+                unfocusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent
+            )
+        )
+        Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.End) {
+            Text(
+                "Save skill",
+                Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(NeonPurple)
+                    .clickable {
+                        if (newSkillName.isNotBlank() && newSkillContent.isNotBlank()) {
+                            vm.addSkillText(newSkillName.trim(), newSkillContent.trim())
+                            newSkillName = ""; newSkillContent = ""
+                        } else {
+                            vm.setStatus("Enter a skill name and content first", com.jnetai.assistant.ui.components.Tone.ERROR)
+                        }
+                    }
+                    .padding(horizontal = 14.dp, vertical = 8.dp),
+                color = androidx.compose.ui.graphics.Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold
+            )
+        }
+
+        Spacer(Modifier.height(10.dp))
+        if (skills.isEmpty()) {
+            Text("No skills yet — upload or paste one above. Enabled skills are injected into every mode.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        skills.forEach { skill ->
+            GlowCard(Modifier.fillMaxWidth().padding(vertical = 2.dp), glow = if (skill.enabled) NeonCyan else NeonPink.copy(alpha = 0.5f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            skill.name, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface, maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                        )
+                        Text(
+                            "${if (skill.enabled) "enabled" else "disabled"} · ${skill.sizeBytes} B · added ${java.text.SimpleDateFormat("MMM d yyyy", java.util.Locale.ROOT).format(java.util.Date(skill.addedAt))}",
+                            fontSize = 11.sp, color = if (skill.enabled) NeonCyan else NeonPink, maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                        )
+                    }
+                    Switch(checked = skill.enabled, onCheckedChange = { vm.setSkillEnabled(skill.name, it) })
+                    IconButton(onClick = { vm.removeSkill(skill.name) }) {
+                        Icon(Icons.Default.Delete, "Remove skill", tint = NeonPink, modifier = Modifier.size(18.dp))
+                    }
+                }
+            }
+        }
 
         Spacer(Modifier.height(24.dp))
     }

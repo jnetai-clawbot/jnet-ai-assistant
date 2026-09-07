@@ -202,6 +202,19 @@ class MainActivity : FragmentActivity() {
         )
     }
 
+    /** Skill file picker (text/markdown) for uploading instructions. */
+    fun openSkillPicker() {
+        launchIntent(
+            Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                type = "*/*"
+                putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("text/markdown", "text/plain", "text/*", "application/octet-stream", "*/*"))
+            },
+            REQ_PICK_SKILL,
+            "skill upload"
+        )
+    }
+
     private fun resultUri(resultCode: Int, data: Intent?): Uri? =
         if (resultCode == Activity.RESULT_OK) data?.data else null
 
@@ -249,6 +262,7 @@ class MainActivity : FragmentActivity() {
             REQ_EXPORT_BACKUP -> resultUri(resultCode, data)?.let { vm().exportBackup(it) }
             REQ_IMPORT_BACKUP -> resultUri(resultCode, data)?.let { vm().importBackup(it) }
             REQ_EXPORT_HISTORY -> resultUri(resultCode, data)?.let { vm().exportHistoryToUri(it) }
+            REQ_PICK_SKILL -> resultUri(resultCode, data)?.let { vm().uploadSkill(it) }
             else -> super.onActivityResult(requestCode, resultCode, data)
         }
     }
@@ -263,6 +277,7 @@ class MainActivity : FragmentActivity() {
         private const val REQ_EXPORT_BACKUP = 7003
         private const val REQ_IMPORT_BACKUP = 7004
         private const val REQ_EXPORT_HISTORY = 7005
+        private const val REQ_PICK_SKILL = 7006
     }
 }
 
@@ -338,7 +353,8 @@ private fun AppRoot(
                         onVoiceSettings = { nav.navigate("voice_settings") },
                         onErrorLogs = { nav.navigate("diagnostics") },
                         onOpenHistory = { nav.navigate("history") },
-                        onExportHistory = { activity.exportHistoryFile() }
+                        onExportHistory = { activity.exportHistoryFile() },
+                        onPickSkill = { activity.openSkillPicker() }
                     )
                 }
                 composable("security") { SecurityScreen(vm, onBack = { nav.popBackStack() }, onDiagnostics = { nav.navigate("diagnostics") }) }

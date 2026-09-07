@@ -57,6 +57,10 @@ class SettingsManager(private val dao: SettingsDao) {
     suspend fun getHybridSearch(): Boolean = getBool("rag.hybrid", true)
     suspend fun setHybridSearch(v: Boolean) = setBool("rag.hybrid", v)
 
+    // Internet search (free, API-less — injected into every mode; ON by default)
+    suspend fun getInternetSearchEnabled(): Boolean = getBool(com.jnetai.assistant.internet.InternetSearch.KEY_ENABLED, true)
+    suspend fun setInternetSearchEnabled(v: Boolean) = setBool(com.jnetai.assistant.internet.InternetSearch.KEY_ENABLED, v)
+
     // Voice
     suspend fun getSttProvider(): String = get("voice.stt", "android")
     suspend fun setSttProvider(v: String) = set("voice.stt", v)

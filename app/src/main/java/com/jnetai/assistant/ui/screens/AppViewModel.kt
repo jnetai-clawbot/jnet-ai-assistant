@@ -60,6 +60,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     val voice = graph.voice
     val gson = Gson()
 
+    // Skills uploaded in Settings — active in EVERY mode (chat, agent, voice).
+    val skills = com.jnetai.assistant.data.skills.SkillsManager(app)
+
+    // ---- Skills ----
+    private val _skillsList = MutableStateFlow<List<com.jnetai.assistant.data.skills.SkillInfo>>(emptyList())
+    val skillsList: StateFlow<List<com.jnetai.assistant.data.skills.SkillInfo>> = _skillsList.asStateFlow()
+
+    private val _internetSearchEnabled = MutableStateFlow(true)
+    val internetSearchEnabled: StateFlow<Boolean> = _internetSearchEnabled.asStateFlow()
+
     // ---- Profiles ----
     private val _profiles = MutableStateFlow<List<ConnectionProfile>>(emptyList())
     val profiles: StateFlow<List<ConnectionProfile>> = _profiles.asStateFlow()
@@ -142,6 +152,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     suspend fun loadData() {
         try {
+            _internetSearchEnabled.value = settings.getInternetSearchEnabled()
+            refreshSkills()
             withContext(Dispatchers.IO) {
                 _conversations.value = firstOf(db.conversationDao().getAll())
                 _documents.value = firstOf(db.documentDao().getAll())
@@ -343,10 +355,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 usage.logActivity("RAG", "Search: '$text' → ${ragCtx?.chunks?.size ?: 0} chunks")
             }
 
+            // global context for every mode: uploaded skills + internet search
+            val globalCtx = buildGlobalContext(text)
+
             // history for model context
             val history = chatRepo.historyFor(cid).takeLast(settings.getInt("profile.max_history", profile.maxHistory))
             val messages = buildList {
                 if (profile.systemPrompt.isNotBlank()) add(ChatMessageInput("system", profile.systemPrompt))
+                globalCtx.forEach { add(it) }
                 if (ragCtx != null && ragCtx.contextText.isNotBlank()) {
                     add(ChatMessageInput("system", "Use the following retrieved documents as the primary factual source. If the answer is not in these documents, say so.\n\n${ragCtx.contextText}"))
                 }
@@ -480,6 +496,88 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun duplicateConversation(id: Long) {
         viewModelScope.launch { val n = chatRepo.duplicate(id); refreshAll() }
+    }
+
+    // ---------- INTERNET & SKILLS ----------
+
+    /**
+     * Context that applies to EVERY mode when active: uploaded skills plus free
+     * internet search results. Internet search is gated by the Settings toggle
+     * (enabled by default) and never fails a chat — a search blip just returns
+     * no context.
+     */
+    private suspend fun buildGlobalContext(userText: String): List<ChatMessageInput> {
+        val out = mutableListOf<ChatMessageInput>()
+        val skillsText = skills.enabledContent()
+        if (skillsText.isNotBlank()) {
+            out += ChatMessageInput(
+                "system",
+                "You have the following SKILLS. Follow their instructions whenever they are relevant.\n\n$skillsText"
+            )
+        }
+        if (_internetSearchEnabled.value && userText.trim().length >= 2) {
+            val web = com.jnetai.assistant.internet.InternetSearch.search(userText)
+            if (web.isNotBlank()) {
+                val today = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.ROOT).format(java.util.Date())
+                out += ChatMessageInput(
+                    "system",
+                    "Fresh internet search results for the user's request (today: $today). Use them as a reference for " +
+                        "current information, and cite the links where helpful. If the results don't answer the question, say so.\n\n$web"
+                )
+            }
+        }
+        return out
+    }
+
+    fun refreshSkills() {
+        _skillsList.value = skills.list()
+    }
+
+    fun setInternetSearchEnabled(enabled: Boolean) {
+        _internetSearchEnabled.value = enabled
+        viewModelScope.launch { settings.setInternetSearchEnabled(enabled); usage.logActivity("settings", "Internet search ${if (enabled) "enabled" else "disabled"}") }
+    }
+
+    fun uploadSkill(uri: Uri) {
+        viewModelScope.launch {
+            try {
+                val name = withContext(Dispatchers.IO) { skills.uploadFromUri(uri) }
+                refreshSkills()
+                setStatus("Skill '$name' uploaded", com.jnetai.assistant.ui.components.Tone.SUCCESS)
+            } catch (t: Throwable) {
+                Err.e(Err.SKILLS_ERROR, "Skill upload failed", t)
+                setStatus("Skill upload failed — see Error logs", com.jnetai.assistant.ui.components.Tone.ERROR)
+            }
+        }
+    }
+
+    fun addSkillText(name: String, content: String) {
+        viewModelScope.launch {
+            try {
+                val stored = withContext(Dispatchers.IO) { skills.add(name, content) }
+                refreshSkills()
+                setStatus("Skill '$stored' saved", com.jnetai.assistant.ui.components.Tone.SUCCESS)
+            } catch (t: Throwable) {
+                Err.e(Err.SKILLS_ERROR, "Skill save failed", t)
+                setStatus(t.message ?: "Skill save failed", com.jnetai.assistant.ui.components.Tone.ERROR)
+            }
+        }
+    }
+
+    fun setSkillEnabled(name: String, enabled: Boolean) {
+        viewModelScope.launch {
+            skills.setEnabled(name, enabled)
+            refreshSkills()
+            setStatus("Skill '$name' ${if (enabled) "enabled" else "disabled"}", com.jnetai.assistant.ui.components.Tone.INFO)
+        }
+    }
+
+    fun removeSkill(name: String) {
+        viewModelScope.launch {
+            skills.remove(name)
+            refreshSkills()
+            setStatus("Skill '$name' removed", com.jnetai.assistant.ui.components.Tone.INFO)
+        }
     }
 
     // ---------- DOCUMENTS ----------
@@ -650,10 +748,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             val profile = resolveProfileModel(profile0)
             voice.wire(
                 conversation = { transcript ->
-                    // build conversation for voice: full history + system
+                    // build conversation for voice: skills + internet + full history + system
                     val cid = _activeConversationId.value
                     val messages = buildList {
                         if (profile.systemPrompt.isNotBlank()) add(ChatMessageInput("system", profile.systemPrompt))
+                        buildGlobalContext(transcript).forEach { add(it) }
                         if (cid != 0L) {
                             chatRepo.historyFor(cid).takeLast(settings.getInt("profile.max_history", profile.maxHistory)).forEach { m -> add(ChatMessageInput(m.role, m.content)) }
                         }
@@ -835,10 +934,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 usage.logActivity("agent", "Agent: $prompt")
 
-                val messages = listOf(
-                    ChatMessageInput("system", AGENT_SYSTEM_PROMPT),
-                    ChatMessageInput("user", prompt)
-                )
+                val globalCtx = buildGlobalContext(prompt)
+                val messages = buildList {
+                    globalCtx.forEach { add(it) }
+                    add(ChatMessageInput("system", AGENT_SYSTEM_PROMPT))
+                    add(ChatMessageInput("user", prompt))
+                }
                 val provider = graph.providerFactory.create(profile) { secrets.get(profile.apiKeyRef) }
                 val result = provider.chat(messages)
                 val reply = result.text

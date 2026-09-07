@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.16] - 2026-09-06
+
+### Added
+- **Global internet search (free, API-less DuckDuckGo) in every chat mode** — Normal, RAG, Hybrid, Agent and Voice all get fresh web results (title/link/snippet) injected into the model context.
+- **Settings → "Enable Internet Search" toggle (ON by default)** — off stops internet access in chat, agent/automation tool calls and voice assistant everywhere.
+- **Skills section in Settings** — upload a Markdown skill file, paste one in, enable/disable each with a switch, and remove any; enabled skills are injected as instructions into every mode.
+- New error codes E0106 (internet search) and E0902 (skills), with stack traces in Error logs.
+
 ## [1.0.15] - 2026-09-06
 
 ### Added
