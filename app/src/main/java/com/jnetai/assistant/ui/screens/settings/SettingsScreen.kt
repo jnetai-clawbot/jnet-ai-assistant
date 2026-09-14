@@ -2,6 +2,7 @@ package com.jnetai.assistant.ui.screens.settings
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -23,11 +24,13 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
@@ -78,6 +81,17 @@ fun SettingsScreen(
     var showClearConfirm by remember { mutableStateOf(false) }
     var newSkillName by remember { mutableStateOf("") }
     var newSkillContent by remember { mutableStateOf("") }
+    var editingSkill by remember { mutableStateOf<com.jnetai.assistant.data.skills.SkillInfo?>(null) }
+    var editSkillName by remember { mutableStateOf("") }
+    var editSkillContent by remember { mutableStateOf("") }
+
+    // Long-press a skill to edit it — loads its content, then opens the editor.
+    val startEditSkill: (com.jnetai.assistant.data.skills.SkillInfo) -> Unit = { skill ->
+        editingSkill = skill
+        editSkillName = skill.name
+        editSkillContent = ""
+        vm.getSkillContent(skill.name) { editSkillContent = it }
+    }
 
     androidx.compose.runtime.LaunchedEffect(Unit) { vm.refreshSkills() }
 
@@ -220,7 +234,13 @@ fun SettingsScreen(
             Text("No skills yet — upload or paste one above. Enabled skills are injected into every mode.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         skills.forEach { skill ->
-            GlowCard(Modifier.fillMaxWidth().padding(vertical = 2.dp), glow = if (skill.enabled) NeonCyan else NeonPink.copy(alpha = 0.5f)) {
+            GlowCard(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 2.dp)
+                    .combinedClickable(onClick = {}, onLongClick = { startEditSkill(skill) }),
+                glow = if (skill.enabled) NeonCyan else NeonPink.copy(alpha = 0.5f)
+            ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text(
@@ -272,6 +292,62 @@ fun SettingsScreen(
             },
             dismissButton = {
                 androidx.compose.material3.TextButton(onClick = { showClearConfirm = false }) { Text("Cancel") }
+            }
+        )
+    }
+
+    editingSkill?.let { skill ->
+        AlertDialog(
+            onDismissRequest = { editingSkill = null },
+            title = { Text("Edit skill — ${skill.name}") },
+            text = {
+                Column {
+                    TextField(
+                        value = editSkillName,
+                        onValueChange = { editSkillName = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Skill name") },
+                        singleLine = true,
+                        shape = RoundedCornerShape(8.dp),
+                        textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface),
+                        colors = TextFieldDefaults.colors(
+                            focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                            focusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
+                            unfocusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent
+                        )
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    TextField(
+                        value = editSkillContent,
+                        onValueChange = { editSkillContent = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Skill instructions (Markdown)") },
+                        minLines = 6,
+                        maxLines = 12,
+                        shape = RoundedCornerShape(8.dp),
+                        textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface),
+                        colors = TextFieldDefaults.colors(
+                            focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                            focusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
+                            unfocusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent
+                        )
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (editSkillName.isNotBlank() && editSkillContent.isNotBlank()) {
+                        vm.updateSkill(skill.name, editSkillName.trim(), editSkillContent.trim())
+                        editingSkill = null
+                    } else {
+                        vm.setStatus("Enter a skill name and content first", com.jnetai.assistant.ui.components.Tone.ERROR)
+                    }
+                }) { Text("Save", color = NeonCyan) }
+            },
+            dismissButton = {
+                TextButton(onClick = { editingSkill = null }) { Text("Cancel") }
             }
         )
     }

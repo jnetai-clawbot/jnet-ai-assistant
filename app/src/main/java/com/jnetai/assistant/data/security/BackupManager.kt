@@ -13,7 +13,9 @@ import com.jnetai.assistant.data.model.IndexedDocument
 import com.jnetai.assistant.data.model.Message
 import com.jnetai.assistant.data.model.UsageRecord
 import com.jnetai.assistant.util.Err
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import java.io.OutputStream
 import java.security.MessageDigest
@@ -41,12 +43,14 @@ class BackupManager(private val context: Context) {
         val documents: List<DocumentBackup>,
         val conversations: List<BackupConversation>,
         val settings: Map<String, String>,
+        val skills: List<SkillBackup>? = null,
         val checksum: String
     )
 
     data class BackupProfile(val profile: ConnectionProfile, val encryptedKeyRef: String)
     data class DocumentBackup(val doc: IndexedDocument, val chunks: List<com.jnetai.assistant.data.model.Chunk>)
     data class BackupConversation(val conversation: Conversation, val messages: List<Message>)
+    data class SkillBackup(val name: String, val content: String, val enabled: Boolean, val addedAt: Long)
 
     private val graph: AppGraph = AppGraph.get(context)
 
@@ -100,6 +104,11 @@ class BackupManager(private val context: Context) {
             bc.messages.forEach { m -> db.messageDao().insert(m.copy(id = 0, conversationId = newId)) }
         }
         env.settings.forEach { (k, v) -> db.settingsDao().put(com.jnetai.assistant.data.model.AppSetting(k, v)) }
+        withContext(Dispatchers.IO) {
+            com.jnetai.assistant.data.skills.SkillsManager(context).importAll(
+                env.skills.orEmpty().map { com.jnetai.assistant.data.skills.SkillData(it.name, it.content, it.enabled, it.addedAt) }
+            )
+        }
     }
 
     private suspend fun buildEnvelope(): BackupEnvelope {
@@ -108,6 +117,9 @@ class BackupManager(private val context: Context) {
         val docs = db.documentDao().getAll().first()
         val convs = db.conversationDao().getAll().first()
         val settings = db.settingsDao().getAll().associate { it.key to it.value }
+        val skillData = withContext(Dispatchers.IO) {
+            com.jnetai.assistant.data.skills.SkillsManager(context).exportAll()
+        }
 
         val docBackups = docs.map { d ->
             DocumentBackup(d, db.chunkDao().getByDocument(d.id))
@@ -122,6 +134,7 @@ class BackupManager(private val context: Context) {
             documents = docBackups,
             conversations = convBackups,
             settings = settings,
+            skills = skillData.map { SkillBackup(it.name, it.content, it.enabled, it.addedAt) },
             checksum = ""
         )
         return env.copy(checksum = checksumOf(env))
@@ -132,7 +145,8 @@ class BackupManager(private val context: Context) {
             env.collections.map { it.name } +
             env.documents.map { "${it.doc.name}:${it.doc.fileHash}" } +
             env.conversations.map { it.conversation.title } +
-            env.settings.keys
+            env.settings.keys +
+            env.skills.orEmpty().map { "${it.name}:${it.content.length}:${it.enabled}" }
         val digest = MessageDigest.getInstance("SHA-256").digest(material.joinToString().toByteArray())
         return digest.joinToString("") { "%02x".format(it) }.take(32)
     }

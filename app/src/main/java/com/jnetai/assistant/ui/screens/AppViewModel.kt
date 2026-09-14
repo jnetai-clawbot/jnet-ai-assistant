@@ -580,6 +580,27 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Loads one skill's full Markdown content (off the main thread). */
+    fun getSkillContent(name: String, onResult: (String) -> Unit) {
+        viewModelScope.launch {
+            onResult(withContext(Dispatchers.IO) { skills.readContent(name) })
+        }
+    }
+
+    /** Edits a skill's name and/or content from the long-press editor. */
+    fun updateSkill(oldName: String, newName: String, content: String) {
+        viewModelScope.launch {
+            try {
+                val stored = withContext(Dispatchers.IO) { skills.update(oldName, newName, content) }
+                refreshSkills()
+                setStatus("Skill '$stored' updated", com.jnetai.assistant.ui.components.Tone.SUCCESS)
+            } catch (t: Throwable) {
+                Err.e(Err.SKILLS_ERROR, "Skill update failed", t)
+                setStatus(t.message ?: "Skill update failed", com.jnetai.assistant.ui.components.Tone.ERROR)
+            }
+        }
+    }
+
     // ---------- DOCUMENTS ----------
 
     /**

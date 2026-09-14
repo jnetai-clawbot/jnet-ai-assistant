@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.17] - 2026-09-14
+
+### Added
+- **Edit skills from Settings** — long-press any skill card to edit both its name and its Markdown instructions (rename is handled automatically; enabled state is preserved).
+- **Complete backup/restore** — backup now includes your uploaded skills (name, content, enabled state, added date) alongside profiles, documents, conversations and settings, so a restore brings everything back.
+- **Built-in "Internet Search" skill, enabled by default** — a default skill that tells the AI how to use the fresh web results injected by the free internet search, in the voice assistant, chat and chat RAG modes (and everywhere else). Gated by the Settings → "Enable Internet Search" permission. It appears once on first run and can be edited/disabled/removed like any other skill.
+- Release APK is now published as **J-AI-Assistant.apk** (still built via GitHub Actions with the same keystore, installs over v1.0.16).
+
 ## [1.0.16] - 2026-09-06
 
 ### Added

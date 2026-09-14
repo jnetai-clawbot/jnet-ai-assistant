@@ -1,5 +1,14 @@
 # J~Net AI Assistant — Changes
 
+## 2026-09-14 — v1.0.17 (update)
+
+### Added
+- **Edit skills from Settings (long-press).** Long-pressing any skill card in Settings → Skills opens an editor where you can change BOTH the skill name and the skill's Markdown instructions. Renames are handled automatically (the stored file + metadata move with the new name, enabled state preserved); the instructions field is fully editable. Just tap Save.
+- **Complete backup / restore.** Backup export now includes your skills alongside everything else — profiles, documents (+chunks), conversations, settings — so "Export backup" then "Import backup" restores the full app data set. Skills carry their name, full content, enabled state and added date. Restore replaces the stored skills with the backup's, then re-seeds the default Internet Search skill so a backup made by an older version can never remove it.
+- **Default "Internet Search" skill, enabled by default.** A built-in skill is created on first run that explains the free (API-less) internet search to the AI and tells it to use injected fresh web results as the primary source for current information, cite the links, and never invent facts/URLs. Because skills are injected into every mode, this now applies to the **voice assistant**, the **chat tab** and **chat RAG mode** (plus hybrid/agent). It is still gated by Settings → **Enable Internet Search** (when that permission is off, no results are injected). The skill can be edited, disabled or removed like any other.
+- Release APK is now published as **J-AI-Assistant.apk** on the v1.0.17 GitHub release. Same keystore → installs directly over v1.0.16, no data loss.
+- v1.0.16 APK backed up to Backup/.
+
 ## 2026-09-06 — v1.0.16 (update)
 
 ### Added
