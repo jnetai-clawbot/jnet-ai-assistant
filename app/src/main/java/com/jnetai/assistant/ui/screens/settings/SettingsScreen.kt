@@ -58,6 +58,7 @@ import com.jnetai.assistant.ui.theme.NeonCyan
 import com.jnetai.assistant.ui.theme.NeonPurple
 import com.jnetai.assistant.ui.theme.NeonPink
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun SettingsScreen(
     vm: AppViewModel,
